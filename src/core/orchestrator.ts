@@ -484,6 +484,14 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
     );
     this.state.successCount++;
     this.state.consecutiveFailures = 0;
+    try {
+      this.sharedMemory?.post(
+        "status",
+        `Iteration ${this.state.currentIteration} succeeded: ${output.summary}`,
+      );
+    } catch {
+      // Best-effort
+    }
     return {
       number: this.state.currentIteration,
       success: true,
@@ -509,6 +517,14 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
     resetHard(this.cwd);
     this.state.failCount++;
     this.state.consecutiveFailures++;
+    try {
+      this.sharedMemory?.post(
+        "status",
+        `Iteration ${this.state.currentIteration} failed: ${recordSummary}`,
+      );
+    } catch {
+      // Best-effort
+    }
     return {
       number: this.state.currentIteration,
       success: false,

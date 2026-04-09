@@ -34,6 +34,7 @@ vi.mock("./shared-memory.js", () => ({
   SharedMemory: vi.fn(() => ({
     register: vi.fn(),
     heartbeat: vi.fn(),
+    post: vi.fn(),
     readOtherRuns: vi.fn(() => ({ runs: {}, entries: [] })),
     deregister: vi.fn(),
   })),
