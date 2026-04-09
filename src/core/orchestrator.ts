@@ -131,6 +131,7 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
   private prompt: string;
   private limits: RunLimits;
   private sharedMemory: SharedMemory | null = null;
+  private postedFileLocks = new Set<string>();
   private stopRequested = false;
   private stopPromise: Promise<void> | null = null;
   private activeIterationPromise: Promise<RunIterationResult> | null = null;
