@@ -18,30 +18,29 @@ Introduce a file-based shared memory system that allows concurrent gnhf runs to 
 
 ```
 .gnhf/shared-memory/
-  registry.json           # Active run registry (run metadata)
+  runs/
+    <runId>.json              # Per-run registration (one file per active run)
   entries/
     <runId>-<timestamp>.json  # Individual memory entries
 ```
 
 ### Run Registry
 
-Each active run registers itself with metadata:
+Each active run registers itself by writing its own file to `runs/<runId>.json`:
 
 ```json
 {
-  "runs": {
-    "add-a-new-feature-fo-4eb55c": {
-      "objective": "Add a new feature for ...",
-      "branch": "gnhf/add-a-new-feature-fo-4eb55c",
-      "startedAt": "2026-04-09T10:00:00Z",
-      "lastHeartbeat": "2026-04-09T10:05:00Z",
-      "cwd": "/path/to/worktree"
-    }
-  }
+  "objective": "Add a new feature for ...",
+  "branch": "gnhf/add-a-new-feature-fo-4eb55c",
+  "startedAt": "2026-04-09T10:00:00Z",
+  "lastHeartbeat": "2026-04-09T10:05:00Z",
+  "cwd": "/path/to/worktree"
 }
 ```
 
-Runs are considered stale if their heartbeat is older than 10 minutes. Stale runs are cleaned up on read.
+Each run writes only its own file, so concurrent registrations and heartbeats never conflict — there is no shared registry file that could suffer from lost-update race conditions. Reading the registry means scanning all files in the `runs/` directory.
+
+Runs are considered stale if their heartbeat is older than 10 minutes. Stale run files are deleted on the next read.
 
 ### Memory Entries
 
@@ -82,7 +81,7 @@ class SharedMemory {
 
 ### Concurrency Safety
 
-File operations use atomic write patterns (write to temp file, then rename) to avoid partial reads. The registry uses a simple last-writer-wins strategy with JSON merge, which is acceptable since concurrent updates to the same run are not expected. Entry files are append-only (each entry is a separate file), so no write conflicts occur.
+File operations use atomic write patterns (write to temp file, then rename) to avoid partial reads. Both run registrations and entries use per-file isolation — each run writes only its own registration file (`runs/<runId>.json`) and each entry is a separate file, so no write conflicts occur between concurrent runs. This eliminates the lost-update race condition that would exist with a shared registry file.
 
 ### Staleness & Cleanup
 
