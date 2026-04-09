@@ -356,6 +356,56 @@ export function detectConflicts(
 }
 
 /**
+ * Detect file conflicts between all pairs of runs in a snapshot.
+ * Returns a deduplicated list of conflicts suitable for the status command,
+ * where each conflict is reported once (runA < runB alphabetically).
+ */
+export function detectAllPairwiseConflicts(
+  snapshot: SharedMemorySnapshot,
+): ConflictInfo[] {
+  const locksByRun = new Map<string, string[]>();
+  for (const entry of snapshot.entries) {
+    if (entry.type !== "file-lock") continue;
+    const list = locksByRun.get(entry.runId) ?? [];
+    list.push(entry.content);
+    locksByRun.set(entry.runId, list);
+  }
+
+  const runIds = [...locksByRun.keys()].sort();
+  if (runIds.length < 2) return [];
+
+  const conflicts: ConflictInfo[] = [];
+  const seen = new Set<string>();
+
+  for (let i = 0; i < runIds.length; i++) {
+    for (let j = i + 1; j < runIds.length; j++) {
+      const runA = runIds[i]!;
+      const runB = runIds[j]!;
+      const locksA = locksByRun.get(runA)!;
+      const locksB = locksByRun.get(runB)!;
+
+      for (const pathA of locksA) {
+        for (const pathB of locksB) {
+          if (pathsOverlap(pathA, pathB)) {
+            const key = `${runA}:${pathA}:${runB}:${pathB}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              conflicts.push({
+                file: pathA,
+                otherRunId: runB,
+                otherFile: pathB,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return conflicts;
+}
+
+/**
  * Filter a snapshot to exclude the given run's data.
  * Equivalent to readOtherRuns() but works on an already-read snapshot.
  */
@@ -477,9 +527,11 @@ function formatTimeAgo(isoTimestamp: string): string {
  */
 export function formatSharedMemoryForTerminal(
   snapshot: SharedMemorySnapshot,
+  conflicts?: ConflictInfo[],
 ): string {
   const runEntries = Object.entries(snapshot.runs);
-  if (runEntries.length === 0 && snapshot.entries.length === 0) {
+  const hasConflicts = conflicts && conflicts.length > 0;
+  if (runEntries.length === 0 && snapshot.entries.length === 0 && !hasConflicts) {
     return "  No active runs.\n";
   }
 
@@ -495,6 +547,22 @@ export function formatSharedMemoryForTerminal(
       lines.push(`      Heartbeat: ${formatTimeAgo(run.lastHeartbeat)}`);
       lines.push("");
     }
+  }
+
+  if (hasConflicts) {
+    lines.push(`  Conflicts (${conflicts.length})`, "");
+    for (const conflict of conflicts) {
+      if (conflict.file === conflict.otherFile) {
+        lines.push(
+          `    ${conflict.file}  ← conflict between runs`,
+        );
+      } else {
+        lines.push(
+          `    ${conflict.file} ↔ ${conflict.otherFile}  (${conflict.otherRunId})`,
+        );
+      }
+    }
+    lines.push("");
   }
 
   const recentEntries = snapshot.entries.slice(-20);
