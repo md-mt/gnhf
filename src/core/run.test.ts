@@ -63,7 +63,7 @@ describe("setupRun", () => {
 
     expect(mockWriteFileSync).toHaveBeenCalledWith(
       join(P, ".git", "info", "exclude"),
-      ".gnhf/runs/\n",
+      ".gnhf/runs/\n.gnhf/shared-memory/\n",
       "utf-8",
     );
   });

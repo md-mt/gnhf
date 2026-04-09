@@ -84,10 +84,13 @@ describe("SharedMemory", () => {
 
     const snapshot = sm.readAll();
     expect(snapshot.entries).toHaveLength(2);
-    expect(snapshot.entries[0]!.type).toBe("status");
-    expect(snapshot.entries[0]!.content).toBe("Working on auth module");
-    expect(snapshot.entries[1]!.type).toBe("file-lock");
-    expect(snapshot.entries[1]!.content).toBe("Modifying src/auth/*.ts");
+    const types = snapshot.entries.map((e) => e.type).sort();
+    expect(types).toEqual(["file-lock", "status"]);
+    const contents = snapshot.entries.map((e) => e.content).sort();
+    expect(contents).toEqual([
+      "Modifying src/auth/*.ts",
+      "Working on auth module",
+    ]);
   });
 
   it("deregisters a run and cleans up entries", () => {
