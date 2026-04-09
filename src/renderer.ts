@@ -4,7 +4,11 @@ import { getMoonPhase } from "./utils/moon.js";
 import { formatElapsed } from "./utils/time.js";
 import { formatTokens } from "./utils/tokens.js";
 import { wordWrap } from "./utils/wordwrap.js";
-import type { Orchestrator, OrchestratorState } from "./core/orchestrator.js";
+import type {
+  Orchestrator,
+  OrchestratorState,
+  SiblingRunInfo,
+} from "./core/orchestrator.js";
 import {
   type Cell,
   type Style,
