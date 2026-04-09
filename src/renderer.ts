@@ -178,17 +178,17 @@ export function renderSiblingRunsCells(
       rows.push(textToCells(truncate(line, SIBLING_LABEL_WIDTH), "dim"));
     } else {
       rows.push(
-        textToCells(truncate(`\u25cb ${shortId}: starting...`, SIBLING_LABEL_WIDTH), "dim"),
+        textToCells(
+          truncate(`\u25cb ${shortId}: starting...`, SIBLING_LABEL_WIDTH),
+          "dim",
+        ),
       );
     }
   }
 
   if (siblingRuns.length > MAX_SIBLING_RUNS) {
     rows.push(
-      textToCells(
-        `  +${siblingRuns.length - MAX_SIBLING_RUNS} more`,
-        "dim",
-      ),
+      textToCells(`  +${siblingRuns.length - MAX_SIBLING_RUNS} more`, "dim"),
     );
   }
 
@@ -387,8 +387,7 @@ export function buildContentCells(
       [],
       ...renderAgentMessageCells(state.lastMessage, state.status),
     ],
-    siblings:
-      siblingRows.length > 0 ? ([[], ...siblingRows] as Cell[][]) : [],
+    siblings: siblingRows.length > 0 ? ([[], ...siblingRows] as Cell[][]) : [],
     moon: [[], [], ...moonRows] as Cell[][],
   };
 
