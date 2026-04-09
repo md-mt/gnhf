@@ -18,7 +18,11 @@ import {
   resetHard,
 } from "./git.js";
 import { buildIterationPrompt } from "../templates/iteration-prompt.js";
-import { SharedMemory, formatSharedMemoryForPrompt } from "./shared-memory.js";
+import {
+  SharedMemory,
+  formatSharedMemoryForPrompt,
+  type SharedMemorySnapshot,
+} from "./shared-memory.js";
 
 export interface IterationRecord {
   number: number;
@@ -239,6 +243,8 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
           const snapshot = this.sharedMemory?.readOtherRuns();
           if (snapshot) {
             sharedMemorySection = formatSharedMemoryForPrompt(snapshot);
+            this.state.siblingRuns = this.extractSiblingRuns(snapshot);
+            this.emit("state", this.getState());
           }
         } catch {
           // Best-effort
@@ -639,6 +645,20 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
       });
       // Best-effort cleanup only.
     }
+  }
+
+  private extractSiblingRuns(snapshot: SharedMemorySnapshot): SiblingRunInfo[] {
+    return Object.entries(snapshot.runs).map(([runId, run]) => {
+      // Find the most recent status entry for this run
+      const statusEntries = snapshot.entries.filter(
+        (e) => e.runId === runId && e.type === "status",
+      );
+      const lastStatus =
+        statusEntries.length > 0
+          ? statusEntries[statusEntries.length - 1].content
+          : null;
+      return { runId, objective: run.objective, lastStatus };
+    });
   }
 
   private snapshotGitState(): Record<string, unknown> {
