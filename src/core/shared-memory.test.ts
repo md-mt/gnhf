@@ -371,3 +371,97 @@ describe("formatSharedMemoryForPrompt", () => {
     expect(result).toContain("Entry 24");
   });
 });
+
+describe("formatSharedMemoryForTerminal", () => {
+  it("returns no-runs message when snapshot is empty", () => {
+    const snapshot: SharedMemorySnapshot = { runs: {}, entries: [] };
+    expect(formatSharedMemoryForTerminal(snapshot)).toBe("  No active runs.\n");
+  });
+
+  it("formats active runs with time-ago labels", () => {
+    const now = Date.now();
+    const snapshot: SharedMemorySnapshot = {
+      runs: {
+        "build-auth-abc123": {
+          objective: "Build the auth module",
+          branch: "gnhf/build-auth-abc123",
+          startedAt: new Date(now - 5 * 60 * 1000).toISOString(),
+          lastHeartbeat: new Date(now - 30 * 1000).toISOString(),
+          cwd: "/path/1",
+        },
+      },
+      entries: [],
+    };
+
+    const result = formatSharedMemoryForTerminal(snapshot);
+    expect(result).toContain("Active Runs (1)");
+    expect(result).toContain("build-auth-abc123");
+    expect(result).toContain("Objective: Build the auth module");
+    expect(result).toContain("Branch:    gnhf/build-auth-abc123");
+    expect(result).toContain("Started:   5m ago");
+    expect(result).toContain("Heartbeat: 30s ago");
+  });
+
+  it("formats entries with type labels and time-ago", () => {
+    const now = Date.now();
+    const snapshot: SharedMemorySnapshot = {
+      runs: {},
+      entries: [
+        {
+          runId: "run-1",
+          type: "status",
+          content: "Iteration 3 succeeded: built auth",
+          timestamp: new Date(now - 2 * 60 * 1000).toISOString(),
+        },
+        {
+          runId: "run-2",
+          type: "file-lock",
+          content: "Modifying src/db/*.ts",
+          timestamp: new Date(now - 30 * 1000).toISOString(),
+        },
+        {
+          runId: "run-1",
+          type: "info",
+          content: "Auth module depends on new config format",
+          timestamp: new Date(now - 10 * 1000).toISOString(),
+        },
+      ],
+    };
+
+    const result = formatSharedMemoryForTerminal(snapshot);
+    expect(result).toContain("Recent Entries (3)");
+    expect(result).toContain("[STATUS] (run-1) Iteration 3 succeeded: built auth");
+    expect(result).toContain("[FILE-LOCK] (run-2) Modifying src/db/*.ts");
+    expect(result).toContain("[INFO] (run-1) Auth module depends on new config format");
+    expect(result).toContain("2m ago");
+    expect(result).toContain("30s ago");
+    expect(result).toContain("10s ago");
+  });
+
+  it("shows both runs and entries together", () => {
+    const now = Date.now();
+    const snapshot: SharedMemorySnapshot = {
+      runs: {
+        "run-1": {
+          objective: "Build X",
+          branch: "gnhf/run-1",
+          startedAt: new Date(now - 10 * 60 * 1000).toISOString(),
+          lastHeartbeat: new Date(now - 60 * 1000).toISOString(),
+          cwd: "/path/1",
+        },
+      },
+      entries: [
+        {
+          runId: "run-1",
+          type: "status",
+          content: "Working",
+          timestamp: new Date(now - 60 * 1000).toISOString(),
+        },
+      ],
+    };
+
+    const result = formatSharedMemoryForTerminal(snapshot);
+    expect(result).toContain("Active Runs (1)");
+    expect(result).toContain("Recent Entries (1)");
+  });
+});
