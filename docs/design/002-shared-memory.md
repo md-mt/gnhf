@@ -125,3 +125,10 @@ Both limits are enforced lazily during `readEntries()` — expired and excess en
 - Each run writes only its own `runs/<runId>.json` file, so concurrent registrations and heartbeats never cause lost updates
 - The `Registry` interface was removed — reading the registry now scans all files in the `runs/` directory
 - Stale run pruning deletes individual run files rather than modifying a shared registry
+
+### Phase 6 (this implementation)
+- Automatic file-lock posting from git diff: after each successful iteration commits changes, the orchestrator extracts changed files via `git diff --name-only HEAD~1..HEAD` and posts file-lock entries automatically
+- Files are grouped by directory — when 3+ files in the same directory are changed, they collapse to a `dir/*` wildcard entry to keep entries concise
+- `.gnhf/` paths (run metadata) are filtered out since they aren't meaningful to sibling runs
+- This makes file-lock data reliable without requiring agent cooperation — every committed change is automatically broadcast to sibling runs
+- Agent-driven file-lock entries (from `shared_memory_entries` output) are still posted in addition to automatic ones, allowing agents to declare intent for files they plan to modify in future iterations
