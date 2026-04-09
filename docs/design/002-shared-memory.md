@@ -115,3 +115,8 @@ Both limits are enforced lazily during `readEntries()` — expired and excess en
 ### Phase 3 (this implementation)
 - CLI subcommand `gnhf status` to inspect shared memory state — shows active runs (objective, branch, started/heartbeat times) and recent entries (type, run, content, time ago) in a terminal-friendly format
 - `formatSharedMemoryForTerminal()` function for human-readable terminal output with relative timestamps
+
+### Phase 4 (this implementation)
+- File-lock entries are separated into a dedicated "Files Being Modified by Other Runs" section in the agent prompt, with an explicit avoidance warning telling the agent not to modify those files unless absolutely necessary
+- Status and info entries remain in the general "Recent Activity from Other Runs" section
+- This makes file-lock entries actionable rather than purely informational — agents can make conflict-avoidance decisions based on the prominent warning
