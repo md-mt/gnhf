@@ -576,3 +576,327 @@ describe("formatSharedMemoryForTerminal", () => {
     expect(result).toContain("Recent Entries (1)");
   });
 });
+
+describe("pathsOverlap", () => {
+  it("matches identical paths", () => {
+    expect(pathsOverlap("src/auth.ts", "src/auth.ts")).toBe(true);
+  });
+
+  it("does not match different paths", () => {
+    expect(pathsOverlap("src/auth.ts", "src/db.ts")).toBe(false);
+  });
+
+  it("matches wildcard against file in same directory", () => {
+    expect(pathsOverlap("src/auth/*", "src/auth/login.ts")).toBe(true);
+    expect(pathsOverlap("src/auth/login.ts", "src/auth/*")).toBe(true);
+  });
+
+  it("does not match wildcard against file in different directory", () => {
+    expect(pathsOverlap("src/auth/*", "src/db/connection.ts")).toBe(false);
+  });
+
+  it("matches two identical wildcards", () => {
+    expect(pathsOverlap("src/auth/*", "src/auth/*")).toBe(true);
+  });
+
+  it("does not match wildcards in different directories", () => {
+    expect(pathsOverlap("src/auth/*", "src/db/*")).toBe(false);
+  });
+
+  it("handles root-level wildcard", () => {
+    expect(pathsOverlap("*", "config.json")).toBe(true);
+    expect(pathsOverlap("config.json", "*")).toBe(true);
+  });
+});
+
+describe("detectConflicts", () => {
+  it("returns empty when no file-lock entries exist", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {},
+      entries: [
+        {
+          runId: "run-1",
+          type: "status",
+          content: "Working",
+          timestamp: "2026-04-09T10:00:00Z",
+        },
+      ],
+    };
+    expect(detectConflicts(snapshot, "run-1")).toEqual([]);
+  });
+
+  it("returns empty when only current run has file-locks", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {},
+      entries: [
+        {
+          runId: "run-1",
+          type: "file-lock",
+          content: "src/auth.ts",
+          timestamp: "2026-04-09T10:00:00Z",
+        },
+      ],
+    };
+    expect(detectConflicts(snapshot, "run-1")).toEqual([]);
+  });
+
+  it("returns empty when no paths overlap", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {},
+      entries: [
+        {
+          runId: "run-1",
+          type: "file-lock",
+          content: "src/auth.ts",
+          timestamp: "2026-04-09T10:00:00Z",
+        },
+        {
+          runId: "run-2",
+          type: "file-lock",
+          content: "src/db.ts",
+          timestamp: "2026-04-09T10:01:00Z",
+        },
+      ],
+    };
+    expect(detectConflicts(snapshot, "run-1")).toEqual([]);
+  });
+
+  it("detects exact path conflicts", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {},
+      entries: [
+        {
+          runId: "run-1",
+          type: "file-lock",
+          content: "src/auth.ts",
+          timestamp: "2026-04-09T10:00:00Z",
+        },
+        {
+          runId: "run-2",
+          type: "file-lock",
+          content: "src/auth.ts",
+          timestamp: "2026-04-09T10:01:00Z",
+        },
+      ],
+    };
+    const conflicts = detectConflicts(snapshot, "run-1");
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]).toEqual({
+      file: "src/auth.ts",
+      otherRunId: "run-2",
+      otherFile: "src/auth.ts",
+    });
+  });
+
+  it("detects wildcard overlap conflicts", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {},
+      entries: [
+        {
+          runId: "run-1",
+          type: "file-lock",
+          content: "src/auth/*",
+          timestamp: "2026-04-09T10:00:00Z",
+        },
+        {
+          runId: "run-2",
+          type: "file-lock",
+          content: "src/auth/login.ts",
+          timestamp: "2026-04-09T10:01:00Z",
+        },
+      ],
+    };
+    const conflicts = detectConflicts(snapshot, "run-1");
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]).toEqual({
+      file: "src/auth/*",
+      otherRunId: "run-2",
+      otherFile: "src/auth/login.ts",
+    });
+  });
+
+  it("deduplicates conflicts with same file and run", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {},
+      entries: [
+        {
+          runId: "run-1",
+          type: "file-lock",
+          content: "src/auth.ts",
+          timestamp: "2026-04-09T10:00:00Z",
+        },
+        {
+          runId: "run-2",
+          type: "file-lock",
+          content: "src/auth.ts",
+          timestamp: "2026-04-09T10:01:00Z",
+        },
+        {
+          runId: "run-2",
+          type: "file-lock",
+          content: "src/auth.ts",
+          timestamp: "2026-04-09T10:02:00Z",
+        },
+      ],
+    };
+    const conflicts = detectConflicts(snapshot, "run-1");
+    expect(conflicts).toHaveLength(1);
+  });
+
+  it("detects conflicts with multiple other runs", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {},
+      entries: [
+        {
+          runId: "run-1",
+          type: "file-lock",
+          content: "src/config.ts",
+          timestamp: "2026-04-09T10:00:00Z",
+        },
+        {
+          runId: "run-2",
+          type: "file-lock",
+          content: "src/config.ts",
+          timestamp: "2026-04-09T10:01:00Z",
+        },
+        {
+          runId: "run-3",
+          type: "file-lock",
+          content: "src/config.ts",
+          timestamp: "2026-04-09T10:02:00Z",
+        },
+      ],
+    };
+    const conflicts = detectConflicts(snapshot, "run-1");
+    expect(conflicts).toHaveLength(2);
+    expect(conflicts.map((c) => c.otherRunId).sort()).toEqual([
+      "run-2",
+      "run-3",
+    ]);
+  });
+});
+
+describe("filterToOtherRuns", () => {
+  it("excludes the given run from runs and entries", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {
+        "run-1": {
+          objective: "Task A",
+          branch: "gnhf/run-1",
+          startedAt: "2026-04-09T10:00:00Z",
+          lastHeartbeat: "2026-04-09T10:05:00Z",
+          cwd: "/path/1",
+        },
+        "run-2": {
+          objective: "Task B",
+          branch: "gnhf/run-2",
+          startedAt: "2026-04-09T10:00:00Z",
+          lastHeartbeat: "2026-04-09T10:05:00Z",
+          cwd: "/path/2",
+        },
+      },
+      entries: [
+        {
+          runId: "run-1",
+          type: "status",
+          content: "Working on A",
+          timestamp: "2026-04-09T10:05:00Z",
+        },
+        {
+          runId: "run-2",
+          type: "status",
+          content: "Working on B",
+          timestamp: "2026-04-09T10:05:00Z",
+        },
+      ],
+    };
+
+    const result = filterToOtherRuns(snapshot, "run-1");
+    expect(Object.keys(result.runs)).toEqual(["run-2"]);
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.runId).toBe("run-2");
+  });
+
+  it("does not mutate the original snapshot", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {
+        "run-1": {
+          objective: "Task A",
+          branch: "gnhf/run-1",
+          startedAt: "2026-04-09T10:00:00Z",
+          lastHeartbeat: "2026-04-09T10:05:00Z",
+          cwd: "/path/1",
+        },
+      },
+      entries: [],
+    };
+
+    filterToOtherRuns(snapshot, "run-1");
+    expect(Object.keys(snapshot.runs)).toEqual(["run-1"]);
+  });
+});
+
+describe("formatSharedMemoryForPrompt with conflicts", () => {
+  it("renders conflict section when conflicts are present", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {
+        "run-2": {
+          objective: "Fix bug Y",
+          branch: "gnhf/run-2",
+          startedAt: "2026-04-09T10:00:00Z",
+          lastHeartbeat: "2026-04-09T10:05:00Z",
+          cwd: "/path/2",
+        },
+      },
+      entries: [],
+    };
+
+    const conflicts = [
+      { file: "src/auth.ts", otherRunId: "run-2", otherFile: "src/auth.ts" },
+    ];
+
+    const result = formatSharedMemoryForPrompt(snapshot, conflicts);
+    expect(result).toContain("CONFLICT DETECTED");
+    expect(result).toContain("CRITICAL");
+    expect(result).toContain("`src/auth.ts` — also modified by run-2");
+  });
+
+  it("renders wildcard overlap conflicts with 'overlaps with' format", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {},
+      entries: [],
+    };
+
+    const conflicts = [
+      {
+        file: "src/auth/*",
+        otherRunId: "run-2",
+        otherFile: "src/auth/login.ts",
+      },
+    ];
+
+    const result = formatSharedMemoryForPrompt(snapshot, conflicts);
+    expect(result).toContain("CONFLICT DETECTED");
+    expect(result).toContain(
+      "`src/auth/*` overlaps with `src/auth/login.ts` from run-2",
+    );
+  });
+
+  it("does not render conflict section when conflicts array is empty", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {
+        "run-2": {
+          objective: "Fix bug Y",
+          branch: "gnhf/run-2",
+          startedAt: "2026-04-09T10:00:00Z",
+          lastHeartbeat: "2026-04-09T10:05:00Z",
+          cwd: "/path/2",
+        },
+      },
+      entries: [],
+    };
+
+    const result = formatSharedMemoryForPrompt(snapshot, []);
+    expect(result).not.toContain("CONFLICT");
+  });
+});
