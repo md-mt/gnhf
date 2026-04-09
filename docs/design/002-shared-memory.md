@@ -132,3 +132,10 @@ Both limits are enforced lazily during `readEntries()` — expired and excess en
 - `.gnhf/` paths (run metadata) are filtered out since they aren't meaningful to sibling runs
 - This makes file-lock data reliable without requiring agent cooperation — every committed change is automatically broadcast to sibling runs
 - Agent-driven file-lock entries (from `shared_memory_entries` output) are still posted in addition to automatic ones, allowing agents to declare intent for files they plan to modify in future iterations
+
+### Phase 7 (this implementation)
+- Active conflict detection: before each iteration, the orchestrator compares the current run's file-lock entries against other runs' file-lock entries to find overlapping paths
+- Conflicts are rendered as a prominent "CONFLICT DETECTED" section at the top of the shared memory prompt, above the regular file-lock warnings
+- Path overlap detection supports exact matches and directory wildcards (e.g., `src/auth/*` matches `src/auth/login.ts`)
+- The orchestrator now reads the full snapshot once per iteration (via `readAll()`) and uses `filterToOtherRuns()` for prompt display + `detectConflicts()` for conflict detection, avoiding duplicate filesystem reads
+- Conflicts are deduplicated by file+runId+otherFile to avoid reporting the same overlap multiple times
