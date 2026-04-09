@@ -89,6 +89,15 @@ File operations use atomic write patterns (write to temp file, then rename) to a
 - Runs that haven't sent a heartbeat in 10 minutes are considered stale and removed from the registry on the next read.
 - Entry files from deregistered or stale runs are cleaned up.
 
+### Entry Retention
+
+Entries are subject to two retention limits to prevent unbounded growth during long-running multi-agent sessions:
+
+- **Max age (30 minutes)**: Entries older than 30 minutes are deleted on read, even from active runs. This keeps the shared memory focused on recent activity.
+- **Per-run cap (10 entries)**: Each run retains at most 10 entries. When a run exceeds this limit, the oldest entries are deleted on the next read. This bounds filesystem usage proportional to the number of active runs.
+
+Both limits are enforced lazily during `readEntries()` — expired and excess entries are deleted as a best-effort side effect of reading.
+
 ## Scope
 
 ### Phase 1 (this implementation)
