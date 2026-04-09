@@ -168,3 +168,9 @@ Both limits are enforced lazily during `readEntries()` — expired and excess en
 - `detectConflicts()` now populates `runId: currentRunId` on each conflict, and `detectAllPairwiseConflicts()` populates `runId: runA` so both run IDs are always available
 - `formatSharedMemoryForTerminal()` now shows both run IDs for conflicts: exact matches display `file ← runA ↔ runB`, wildcard overlaps display `fileA (runA) ↔ fileB (runB)` — making it clear which specific runs are in conflict
 - All existing conflict tests updated to include the new `runId` field
+
+### Phase 13 (this implementation)
+- `gnhf status --watch` for live monitoring of parallel runs — refreshes the display every N seconds (default 2s, configurable via `--watch 5`)
+- Uses ANSI escape codes to clear screen and redraw on each poll, showing a header with the refresh interval and current time
+- Composable with `--json` for programmatic watch mode (e.g., piping to jq in a loop)
+- Clean Ctrl+C handling via SIGINT listener that clears the interval and exits gracefully
