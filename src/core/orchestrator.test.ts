@@ -34,16 +34,19 @@ const { mockSharedMemoryPost } = vi.hoisted(() => ({
   mockSharedMemoryPost: vi.fn(),
 }));
 
-vi.mock("./shared-memory.js", () => ({
-  SharedMemory: vi.fn(() => ({
-    register: vi.fn(),
-    heartbeat: vi.fn(),
-    post: mockSharedMemoryPost,
-    readOtherRuns: vi.fn(() => ({ runs: {}, entries: [] })),
-    deregister: vi.fn(),
-  })),
-  formatSharedMemoryForPrompt: vi.fn(() => ""),
-}));
+vi.mock("./shared-memory.js", () => {
+  class MockSharedMemory {
+    register = vi.fn();
+    heartbeat = vi.fn();
+    post = mockSharedMemoryPost;
+    readOtherRuns = vi.fn(() => ({ runs: {}, entries: [] }));
+    deregister = vi.fn();
+  }
+  return {
+    SharedMemory: MockSharedMemory,
+    formatSharedMemoryForPrompt: vi.fn(() => ""),
+  };
+});
 
 import { commitAll } from "./git.js";
 import { appendNotes } from "./run.js";
