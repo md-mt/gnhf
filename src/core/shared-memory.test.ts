@@ -477,6 +477,7 @@ describe("SharedMemory worktree integration", () => {
     const conflicts = detectConflicts(fullSnapshot, "worktree-run");
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0]).toEqual({
+      runId: "worktree-run",
       file: "src/config.ts",
       otherRunId: "main-run",
       otherFile: "src/config.ts",
@@ -841,6 +842,7 @@ describe("detectConflicts", () => {
     const conflicts = detectConflicts(snapshot, "run-1");
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0]).toEqual({
+      runId: "run-1",
       file: "src/auth.ts",
       otherRunId: "run-2",
       otherFile: "src/auth.ts",
@@ -868,6 +870,7 @@ describe("detectConflicts", () => {
     const conflicts = detectConflicts(snapshot, "run-1");
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0]).toEqual({
+      runId: "run-1",
       file: "src/auth/*",
       otherRunId: "run-2",
       otherFile: "src/auth/login.ts",
@@ -1011,7 +1014,12 @@ describe("formatSharedMemoryForPrompt with conflicts", () => {
     };
 
     const conflicts = [
-      { file: "src/auth.ts", otherRunId: "run-2", otherFile: "src/auth.ts" },
+      {
+        runId: "run-1",
+        file: "src/auth.ts",
+        otherRunId: "run-2",
+        otherFile: "src/auth.ts",
+      },
     ];
 
     const result = formatSharedMemoryForPrompt(snapshot, conflicts);
@@ -1028,6 +1036,7 @@ describe("formatSharedMemoryForPrompt with conflicts", () => {
 
     const conflicts = [
       {
+        runId: "run-1",
         file: "src/auth/*",
         otherRunId: "run-2",
         otherFile: "src/auth/login.ts",
@@ -1139,6 +1148,7 @@ describe("detectAllPairwiseConflicts", () => {
     const conflicts = detectAllPairwiseConflicts(snapshot);
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0]).toEqual({
+      runId: "run-1",
       file: "src/config.ts",
       otherRunId: "run-2",
       otherFile: "src/config.ts",
@@ -1172,9 +1182,7 @@ describe("detectAllPairwiseConflicts", () => {
     const conflicts = detectAllPairwiseConflicts(snapshot);
     // run-1 vs run-2, run-1 vs run-3, run-2 vs run-3
     expect(conflicts).toHaveLength(3);
-    const pairs = conflicts.map(
-      (c) => `${c.file}:${c.otherRunId}`,
-    );
+    const pairs = conflicts.map((c) => `${c.file}:${c.otherRunId}`);
     expect(pairs).toContain("src/config.ts:run-2");
     expect(pairs).toContain("src/config.ts:run-3");
   });
@@ -1200,6 +1208,7 @@ describe("detectAllPairwiseConflicts", () => {
     const conflicts = detectAllPairwiseConflicts(snapshot);
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0]).toEqual({
+      runId: "run-1",
       file: "src/auth/*",
       otherRunId: "run-2",
       otherFile: "src/auth/login.ts",
@@ -1245,19 +1254,26 @@ describe("formatSharedMemoryForTerminal with conflicts", () => {
       entries: [],
     };
     const conflicts = [
-      { file: "src/config.ts", otherRunId: "run-2", otherFile: "src/config.ts" },
+      {
+        runId: "run-1",
+        file: "src/config.ts",
+        otherRunId: "run-2",
+        otherFile: "src/config.ts",
+      },
     ];
 
     const result = formatSharedMemoryForTerminal(snapshot, conflicts);
     expect(result).toContain("Conflicts (1)");
     expect(result).toContain("src/config.ts");
-    expect(result).toContain("conflict between runs");
+    expect(result).toContain("run-1");
+    expect(result).toContain("run-2");
   });
 
   it("shows wildcard overlap in conflicts section", () => {
     const snapshot: SharedMemorySnapshot = { runs: {}, entries: [] };
     const conflicts = [
       {
+        runId: "run-1",
         file: "src/auth/*",
         otherRunId: "run-2",
         otherFile: "src/auth/login.ts",

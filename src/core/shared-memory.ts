@@ -14,7 +14,9 @@ import { execSync } from "node:child_process";
 export type EntryType = "status" | "file-lock" | "info";
 
 export interface ConflictInfo {
-  /** File path or pattern from the current run */
+  /** The run that owns the `file` path */
+  runId: string;
+  /** File path or pattern from that run */
   file: string;
   /** The other run that also locked this path */
   otherRunId: string;
@@ -343,6 +345,7 @@ export function detectConflicts(
         if (!seen.has(key)) {
           seen.add(key);
           conflicts.push({
+            runId: currentRunId,
             file: myPath,
             otherRunId: otherEntry.runId,
             otherFile: otherEntry.content,
@@ -391,6 +394,7 @@ export function detectAllPairwiseConflicts(
             if (!seen.has(key)) {
               seen.add(key);
               conflicts.push({
+                runId: runA,
                 file: pathA,
                 otherRunId: runB,
                 otherFile: pathB,
@@ -531,7 +535,11 @@ export function formatSharedMemoryForTerminal(
 ): string {
   const runEntries = Object.entries(snapshot.runs);
   const hasConflicts = conflicts && conflicts.length > 0;
-  if (runEntries.length === 0 && snapshot.entries.length === 0 && !hasConflicts) {
+  if (
+    runEntries.length === 0 &&
+    snapshot.entries.length === 0 &&
+    !hasConflicts
+  ) {
     return "  No active runs.\n";
   }
 
@@ -554,11 +562,11 @@ export function formatSharedMemoryForTerminal(
     for (const conflict of conflicts) {
       if (conflict.file === conflict.otherFile) {
         lines.push(
-          `    ${conflict.file}  ← conflict between runs`,
+          `    ${conflict.file}  ← ${conflict.runId} ↔ ${conflict.otherRunId}`,
         );
       } else {
         lines.push(
-          `    ${conflict.file} ↔ ${conflict.otherFile}  (${conflict.otherRunId})`,
+          `    ${conflict.file} (${conflict.runId}) ↔ ${conflict.otherFile} (${conflict.otherRunId})`,
         );
       }
     }

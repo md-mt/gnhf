@@ -162,3 +162,9 @@ Both limits are enforced lazily during `readEntries()` — expired and excess en
 - `formatSharedMemoryForTerminal()` now accepts optional conflicts and renders a "Conflicts (N)" section between active runs and recent entries
 - `gnhf status --json` output now includes a `conflicts` array alongside runs and entries
 - Terminal conflict display uses `← conflict between runs` for exact matches and `↔` with run attribution for wildcard overlaps
+
+### Phase 12 (this implementation)
+- Added `runId` field to `ConflictInfo` interface to track the source run in every conflict — previously the source run ID was implicit (the "current run" in `detectConflicts`) or lost entirely (in `detectAllPairwiseConflicts`)
+- `detectConflicts()` now populates `runId: currentRunId` on each conflict, and `detectAllPairwiseConflicts()` populates `runId: runA` so both run IDs are always available
+- `formatSharedMemoryForTerminal()` now shows both run IDs for conflicts: exact matches display `file ← runA ↔ runB`, wildcard overlaps display `fileA (runA) ↔ fileB (runB)` — making it clear which specific runs are in conflict
+- All existing conflict tests updated to include the new `runId` field
