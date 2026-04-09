@@ -11,3 +11,4 @@ Files are numbered sequentially: `NNN-short-description.md` (e.g., `001-worktree
 | # | Title | Date |
 |---|-------|------|
 | 001 | [Worktree Support](001-worktree-support.md) | 2026-04-09 |
+| 002 | [Shared Memory](002-shared-memory.md) | 2026-04-09 |
