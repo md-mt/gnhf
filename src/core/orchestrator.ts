@@ -83,6 +83,37 @@ function parseSharedMemoryEntries(value: unknown): SharedMemoryEntryOutput[] {
   );
 }
 
+/**
+ * Group a list of changed file paths into concise directory-level entries.
+ * When a directory has 3+ files changed, collapses them into "dir/*".
+ * Individual files in directories with fewer changes are kept as-is.
+ * Filters out .gnhf/ paths (run metadata).
+ */
+export function groupChangedFiles(files: string[]): string[] {
+  const filtered = files.filter((f) => !f.startsWith(".gnhf/"));
+  if (filtered.length === 0) return [];
+
+  // Count files per parent directory
+  const dirCounts = new Map<string, string[]>();
+  for (const file of filtered) {
+    const dir = dirname(file);
+    const list = dirCounts.get(dir) ?? [];
+    list.push(file);
+    dirCounts.set(dir, list);
+  }
+
+  const result: string[] = [];
+  for (const [dir, dirFiles] of dirCounts) {
+    if (dirFiles.length >= 3) {
+      result.push(dir === "." ? "*" : `${dir}/*`);
+    } else {
+      result.push(...dirFiles);
+    }
+  }
+
+  return result.sort();
+}
+
 const STOP_CLOSE_AGENT_GRACE_MS = 250;
 
 type RunIterationResult =
@@ -523,6 +554,12 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
         "status",
         `Iteration ${this.state.currentIteration} succeeded: ${output.summary}`,
       );
+      // Auto-post file-lock entries based on actual files changed in the commit
+      const changedFiles = getChangedFilesInLastCommit(this.cwd);
+      const fileLockPaths = groupChangedFiles(changedFiles);
+      for (const path of fileLockPaths) {
+        this.sharedMemory?.post("file-lock", path);
+      }
       // Post agent-driven entries (file-lock, info)
       const agentEntries = parseSharedMemoryEntries(
         output.shared_memory_entries,
