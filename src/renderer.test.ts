@@ -147,6 +147,70 @@ describe("renderMoonStrip", () => {
   });
 });
 
+describe("renderSiblingRunsCells", () => {
+  it("returns empty rows when there are no sibling runs", () => {
+    const rows = renderSiblingRunsCells([]);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("renders a header and one line per sibling run", () => {
+    const siblings: SiblingRunInfo[] = [
+      {
+        runId: "fix-auth-ab12cd",
+        objective: "Fix auth middleware",
+        lastStatus: "Iteration 2 succeeded: added token validation",
+      },
+    ];
+    const rows = renderSiblingRunsCells(siblings);
+    const text = rows.map(rowToString).map(stripAnsi).join("\n");
+    expect(text).toContain("sibling runs");
+    expect(text).toContain("fix-auth-ab12cd");
+    expect(text).toContain("added token validation");
+  });
+
+  it("shows starting status when no lastStatus is available", () => {
+    const siblings: SiblingRunInfo[] = [
+      {
+        runId: "new-feature-cd34ef",
+        objective: "Add new feature",
+        lastStatus: null,
+      },
+    ];
+    const rows = renderSiblingRunsCells(siblings);
+    const text = rows.map(rowToString).map(stripAnsi).join("\n");
+    expect(text).toContain("new-feature-cd34ef");
+    expect(text).toContain("starting...");
+  });
+
+  it("limits displayed runs to 3 and shows overflow count", () => {
+    const siblings: SiblingRunInfo[] = Array.from({ length: 5 }, (_, i) => ({
+      runId: `run-${i}-abcdef`,
+      objective: `Objective ${i}`,
+      lastStatus: `Iteration 1 succeeded: done ${i}`,
+    }));
+    const rows = renderSiblingRunsCells(siblings);
+    const text = rows.map(rowToString).map(stripAnsi).join("\n");
+    expect(text).toContain("run-0-abcdef");
+    expect(text).toContain("run-2-abcdef");
+    expect(text).not.toContain("run-3-abcdef");
+    expect(text).toContain("+2 more");
+  });
+
+  it("truncates long run IDs", () => {
+    const siblings: SiblingRunInfo[] = [
+      {
+        runId: "this-is-a-very-long-run-id-that-exceeds-24-chars-abcdef",
+        objective: "Something",
+        lastStatus: null,
+      },
+    ];
+    const rows = renderSiblingRunsCells(siblings);
+    const text = rows.map(rowToString).map(stripAnsi).join("\n");
+    expect(text).toContain("\u2026");
+    expect(text).not.toContain("abcdef");
+  });
+});
+
 describe("renderStarFieldLines", () => {
   it("renders the correct number of rows", () => {
     const lines = renderStarFieldLines(42, 40, 3, Date.now());
@@ -440,6 +504,55 @@ describe("buildContentCells adaptive height", () => {
     expect(text).toContain("reading files");
     expect(text).toContain("00:01:00");
     expect(rows).toHaveLength(22);
+  });
+
+  it("shows sibling runs section when siblingRuns are present", () => {
+    const stateWithSiblings: OrchestratorState = {
+      ...state,
+      siblingRuns: [
+        {
+          runId: "fix-auth-ab12cd",
+          objective: "Fix auth middleware",
+          lastStatus: "Iteration 2 succeeded: added token validation",
+        },
+      ],
+    };
+    const rows = buildContentCells(
+      "my prompt",
+      "claude",
+      stateWithSiblings,
+      "00:01:00",
+      0,
+    );
+    const text = toText(rows);
+    expect(text).toContain("sibling runs");
+    expect(text).toContain("fix-auth-ab12cd");
+  });
+
+  it("drops sibling runs before agent message when height is tight", () => {
+    const stateWithSiblings: OrchestratorState = {
+      ...state,
+      siblingRuns: [
+        {
+          runId: "fix-auth-ab12cd",
+          objective: "Fix auth middleware",
+          lastStatus: null,
+        },
+      ],
+    };
+    // At height 19, art is dropped; at 16, siblings should also be dropped
+    const rows = buildContentCells(
+      "my prompt",
+      "claude",
+      stateWithSiblings,
+      "00:01:00",
+      0,
+      16,
+    );
+    const text = toText(rows);
+    expect(text).not.toContain("sibling runs");
+    expect(text).toContain("reading files");
+    expect(rows.length).toBeLessThanOrEqual(16);
   });
 
   it("keeps the logo separated from both the eyebrow and prompt", () => {
