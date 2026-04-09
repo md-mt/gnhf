@@ -13,6 +13,15 @@ import { execSync } from "node:child_process";
 
 export type EntryType = "status" | "file-lock" | "info";
 
+export interface ConflictInfo {
+  /** File path or pattern from the current run */
+  file: string;
+  /** The other run that also locked this path */
+  otherRunId: string;
+  /** The other run's file path or pattern that overlaps */
+  otherFile: string;
+}
+
 export interface RunRegistration {
   objective: string;
   branch: string;
@@ -271,11 +280,79 @@ export class SharedMemory {
 }
 
 /**
+ * Check whether two file paths/patterns overlap.
+ * Handles exact matches and directory wildcards (e.g., "dir/*" matches "dir/foo.ts").
+ */
+export function pathsOverlap(a: string, b: string): boolean {
+  if (a === b) return true;
+  // "dir/*" matches "dir/foo.ts"
+  if (a.endsWith("/*") && b.startsWith(a.slice(0, -1))) return true;
+  if (b.endsWith("/*") && a.startsWith(b.slice(0, -1))) return true;
+  return false;
+}
+
+/**
+ * Detect file conflicts between the current run and other runs.
+ * Compares file-lock entries from the current run against other runs' file-lock
+ * entries to find overlapping paths — indicating both runs modified the same files.
+ */
+export function detectConflicts(
+  snapshot: SharedMemorySnapshot,
+  currentRunId: string,
+): ConflictInfo[] {
+  const myLocks = snapshot.entries
+    .filter((e) => e.runId === currentRunId && e.type === "file-lock")
+    .map((e) => e.content);
+
+  const otherLocks = snapshot.entries.filter(
+    (e) => e.runId !== currentRunId && e.type === "file-lock",
+  );
+
+  if (myLocks.length === 0 || otherLocks.length === 0) return [];
+
+  const conflicts: ConflictInfo[] = [];
+  const seen = new Set<string>();
+
+  for (const myPath of myLocks) {
+    for (const otherEntry of otherLocks) {
+      if (pathsOverlap(myPath, otherEntry.content)) {
+        const key = `${myPath}:${otherEntry.runId}:${otherEntry.content}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          conflicts.push({
+            file: myPath,
+            otherRunId: otherEntry.runId,
+            otherFile: otherEntry.content,
+          });
+        }
+      }
+    }
+  }
+
+  return conflicts;
+}
+
+/**
+ * Filter a snapshot to exclude the given run's data.
+ * Equivalent to readOtherRuns() but works on an already-read snapshot.
+ */
+export function filterToOtherRuns(
+  snapshot: SharedMemorySnapshot,
+  currentRunId: string,
+): SharedMemorySnapshot {
+  const runs = { ...snapshot.runs };
+  delete runs[currentRunId];
+  const entries = snapshot.entries.filter((e) => e.runId !== currentRunId);
+  return { runs, entries };
+}
+
+/**
  * Format a shared memory snapshot as a human-readable string
  * for inclusion in the iteration prompt.
  */
 export function formatSharedMemoryForPrompt(
   snapshot: SharedMemorySnapshot,
+  conflicts?: ConflictInfo[],
 ): string {
   const runEntries = Object.entries(snapshot.runs);
   if (runEntries.length === 0 && snapshot.entries.length === 0) {
