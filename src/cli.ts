@@ -544,6 +544,23 @@ program
     },
   );
 
+program
+  .command("status")
+  .description("Show active parallel runs and their shared memory entries")
+  .action(() => {
+    try {
+      const cwd = process.cwd();
+      const sharedMemory = new SharedMemory(cwd, "__gnhf_status__");
+      const snapshot = sharedMemory.readAll();
+      // Remove the viewer's dummy entry from the registry
+      delete snapshot.runs["__gnhf_status__"];
+      console.log("");
+      console.log(formatSharedMemoryForTerminal(snapshot));
+    } catch (err) {
+      die(err instanceof Error ? err.message : String(err));
+    }
+  });
+
 function enterAltScreen() {
   process.stdout.write("\x1b[?1049h");
   process.stdout.write("\x1b[?25l");

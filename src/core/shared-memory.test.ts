@@ -13,6 +13,7 @@ import { execSync } from "node:child_process";
 import {
   SharedMemory,
   formatSharedMemoryForPrompt,
+  formatSharedMemoryForTerminal,
   type SharedMemorySnapshot,
 } from "./shared-memory.js";
 
