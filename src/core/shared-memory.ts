@@ -193,6 +193,27 @@ export class SharedMemory {
     this.cleanupEntries(this.runId);
   }
 
+  /**
+   * Remove all shared memory state — all run registrations and entries.
+   * Returns the number of files deleted.
+   */
+  clearAll(): number {
+    let deleted = 0;
+    for (const dir of [this.runsDir, this.entriesDir]) {
+      if (!existsSync(dir)) continue;
+      const files = readdirSync(dir).filter((f) => f.endsWith(".json"));
+      for (const file of files) {
+        try {
+          unlinkSync(join(dir, file));
+          deleted++;
+        } catch {
+          // Best-effort cleanup
+        }
+      }
+    }
+    return deleted;
+  }
+
   private readEntries(activeRunIds: Set<string>): MemoryEntry[] {
     if (!existsSync(this.entriesDir)) {
       return [];
