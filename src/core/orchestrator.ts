@@ -277,6 +277,12 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
           commitCount: this.state.commitCount,
         });
 
+        try {
+          this.sharedMemory?.heartbeat();
+        } catch {
+          // Best-effort
+        }
+
         const postIterationAbortReason = this.getPostIterationAbortReason();
         if (postIterationAbortReason) {
           this.abort(postIterationAbortReason);
@@ -325,6 +331,11 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
         await this.stopPromise;
       } else {
         await this.closeAgent();
+      }
+      try {
+        this.sharedMemory?.deregister();
+      } catch {
+        // Best-effort
       }
       this.loopDone = true;
       appendDebugLog("orchestrator:end", {
