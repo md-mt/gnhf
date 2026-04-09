@@ -32,6 +32,8 @@ function writeSchemaFile(schemaPath: string): void {
   );
 }
 
+const GNHF_EXCLUDE_ENTRIES = [".gnhf/runs/", ".gnhf/shared-memory/"];
+
 function ensureRunMetadataIgnored(cwd: string): void {
   const excludePath = execFileSync(
     "git",
@@ -41,18 +43,19 @@ function ensureRunMetadataIgnored(cwd: string): void {
   const resolved = isAbsolute(excludePath)
     ? excludePath
     : join(cwd, excludePath);
-  const entry = ".gnhf/runs/";
   mkdirSync(dirname(resolved), { recursive: true });
 
   if (existsSync(resolved)) {
     const content = readFileSync(resolved, "utf-8");
-    if (content.split("\n").some((line) => line.trim() === entry)) return;
+    const existingLines = new Set(content.split("\n").map((l) => l.trim()));
+    const missing = GNHF_EXCLUDE_ENTRIES.filter((e) => !existingLines.has(e));
+    if (missing.length === 0) return;
     const separator = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
-    appendFileSync(resolved, `${separator}${entry}\n`, "utf-8");
+    appendFileSync(resolved, `${separator}${missing.join("\n")}\n`, "utf-8");
   } else {
     // This ignore rule is runtime metadata, so keep it local to the clone
     // instead of mutating tracked .gitignore state on startup.
-    writeFileSync(resolved, `${entry}\n`, "utf-8");
+    writeFileSync(resolved, `${GNHF_EXCLUDE_ENTRIES.join("\n")}\n`, "utf-8");
   }
 }
 

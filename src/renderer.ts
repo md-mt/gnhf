@@ -4,7 +4,11 @@ import { getMoonPhase } from "./utils/moon.js";
 import { formatElapsed } from "./utils/time.js";
 import { formatTokens } from "./utils/tokens.js";
 import { wordWrap } from "./utils/wordwrap.js";
-import type { Orchestrator, OrchestratorState } from "./core/orchestrator.js";
+import type {
+  Orchestrator,
+  OrchestratorState,
+  SiblingRunInfo,
+} from "./core/orchestrator.js";
 import {
   type Cell,
   type Style,
@@ -141,6 +145,53 @@ export function renderMoonStripCells(
     }
     rows.push(cells);
   }
+  return rows;
+}
+
+const MAX_SIBLING_RUNS = 3;
+const SIBLING_LABEL_WIDTH = CONTENT_WIDTH;
+
+function truncate(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen - 1) + "\u2026";
+}
+
+export function renderSiblingRunsCells(
+  siblingRuns: SiblingRunInfo[],
+): Cell[][] {
+  if (siblingRuns.length === 0) return [];
+
+  const rows: Cell[][] = [];
+  rows.push(textToCells("\u2500\u2500 sibling runs \u2500\u2500", "dim"));
+
+  const displayed = siblingRuns.slice(0, MAX_SIBLING_RUNS);
+  for (const run of displayed) {
+    // Show run ID (shortened) and a brief status
+    const shortId = truncate(run.runId, 24);
+    if (run.lastStatus) {
+      // Strip "Iteration N succeeded/failed: " prefix if present
+      const statusText = run.lastStatus.replace(
+        /^Iteration \d+ (?:succeeded|failed): /,
+        "",
+      );
+      const line = `\u25cb ${shortId}: ${truncate(statusText, SIBLING_LABEL_WIDTH - shortId.length - 4)}`;
+      rows.push(textToCells(truncate(line, SIBLING_LABEL_WIDTH), "dim"));
+    } else {
+      rows.push(
+        textToCells(
+          truncate(`\u25cb ${shortId}: starting...`, SIBLING_LABEL_WIDTH),
+          "dim",
+        ),
+      );
+    }
+  }
+
+  if (siblingRuns.length > MAX_SIBLING_RUNS) {
+    rows.push(
+      textToCells(`  +${siblingRuns.length - MAX_SIBLING_RUNS} more`, "dim"),
+    );
+  }
+
   return rows;
 }
 
@@ -317,6 +368,7 @@ export function buildContentCells(
     promptRows.push(pl ? textToCells(pl, "dim") : []);
   }
 
+  const siblingRows = renderSiblingRunsCells(state.siblingRuns);
   const sections = {
     top: [[]] as Cell[][],
     eyebrow: [titleCells[0], [], []] as Cell[][],
@@ -335,6 +387,7 @@ export function buildContentCells(
       [],
       ...renderAgentMessageCells(state.lastMessage, state.status),
     ],
+    siblings: siblingRows.length > 0 ? ([[], ...siblingRows] as Cell[][]) : [],
     moon: [[], [], ...moonRows] as Cell[][],
   };
 
@@ -345,12 +398,14 @@ export function buildContentCells(
     ...sections.prompt,
     ...sections.stats,
     ...sections.agent,
+    ...sections.siblings,
     ...sections.moon,
   ];
 
   const optionalSections: Array<keyof typeof sections> = [
     "art",
     "eyebrow",
+    "siblings",
     "agent",
     "prompt",
   ];
@@ -374,6 +429,7 @@ export function buildContentCells(
       ...sections.prompt,
       ...sections.stats,
       ...sections.agent,
+      ...sections.siblings,
     ].filter((row) => row.length > 0);
     const allowedMoonRows = Math.max(0, maxRows - nonMoonRows.length);
     const visibleMoonRows =

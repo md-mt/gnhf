@@ -35,6 +35,11 @@ import { readStdinText } from "./core/stdin.js";
 import { startSleepPrevention } from "./core/sleep.js";
 import { createAgent } from "./core/agents/factory.js";
 import { Orchestrator } from "./core/orchestrator.js";
+import {
+  SharedMemory,
+  detectAllPairwiseConflicts,
+  formatSharedMemoryForTerminal,
+} from "./core/shared-memory.js";
 import { MockOrchestrator } from "./mock-orchestrator.js";
 import { Renderer } from "./renderer.js";
 import { slugifyPrompt } from "./utils/slugify.js";
@@ -92,10 +97,7 @@ interface WorktreeRunResult {
   effectiveCwd: string;
 }
 
-function initializeWorktreeRun(
-  prompt: string,
-  cwd: string,
-): WorktreeRunResult {
+function initializeWorktreeRun(prompt: string, cwd: string): WorktreeRunResult {
   const repoRoot = getRepoRootDir(cwd);
   const baseCommit = getHeadCommit(cwd);
   const branchName = slugifyPrompt(prompt);
@@ -539,6 +541,92 @@ program
 
       if (shutdownSignal) {
         process.exit(getSignalExitCode(shutdownSignal));
+      }
+    },
+  );
+
+program
+  .command("status")
+  .description("Show active parallel runs and their shared memory entries")
+  .option("--json", "Output as JSON for programmatic consumption")
+  .option("--clear", "Remove all shared memory state (runs and entries)")
+  .option(
+    "--watch [interval]",
+    "Continuously refresh display (default: 2s, e.g., --watch 5)",
+  )
+  .action(
+    (opts: { json?: boolean; clear?: boolean; watch?: string | true }) => {
+      try {
+        const cwd = process.cwd();
+        const sharedMemory = new SharedMemory(cwd, "__gnhf_status__");
+
+        if (opts.clear) {
+          const deleted = sharedMemory.clearAll();
+          if (opts.json) {
+            console.log(JSON.stringify({ cleared: deleted }));
+          } else {
+            console.log(
+              `  Cleared ${deleted} shared memory file${deleted === 1 ? "" : "s"}.`,
+            );
+          }
+          return;
+        }
+
+        if (opts.watch !== undefined) {
+          const intervalSec =
+            opts.watch === true
+              ? 2
+              : Math.max(1, parseInt(opts.watch, 10) || 2);
+          const intervalMs = intervalSec * 1000;
+
+          const render = () => {
+            const snapshot = sharedMemory.readAll();
+            delete snapshot.runs["__gnhf_status__"];
+            const conflicts = detectAllPairwiseConflicts(snapshot);
+
+            // Clear screen and move cursor to top-left
+            process.stdout.write("\x1b[2J\x1b[H");
+
+            if (opts.json) {
+              console.log(
+                JSON.stringify({ ...snapshot, conflicts }, null, 2),
+              );
+            } else {
+              const now = new Date().toLocaleTimeString();
+              console.log(
+                `  gnhf status (every ${intervalSec}s) — ${now}\n`,
+              );
+              console.log(
+                formatSharedMemoryForTerminal(snapshot, conflicts),
+              );
+              console.log("  Press Ctrl+C to exit.");
+            }
+          };
+
+          render();
+          const timer = setInterval(render, intervalMs);
+
+          // Clean exit on Ctrl+C
+          process.on("SIGINT", () => {
+            clearInterval(timer);
+            process.exit(0);
+          });
+          return;
+        }
+
+        const snapshot = sharedMemory.readAll();
+        // Remove the viewer's dummy entry from the registry
+        delete snapshot.runs["__gnhf_status__"];
+        const conflicts = detectAllPairwiseConflicts(snapshot);
+
+        if (opts.json) {
+          console.log(JSON.stringify({ ...snapshot, conflicts }, null, 2));
+        } else {
+          console.log("");
+          console.log(formatSharedMemoryForTerminal(snapshot, conflicts));
+        }
+      } catch (err) {
+        die(err instanceof Error ? err.message : String(err));
       }
     },
   );

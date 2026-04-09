@@ -123,6 +123,20 @@ export function getRepoRootDir(cwd: string): string {
   return git("rev-parse --show-toplevel", cwd);
 }
 
+/**
+ * Returns the list of files changed in the most recent commit.
+ * Returns an empty array if there are no commits or an error occurs.
+ */
+export function getChangedFilesInLastCommit(cwd: string): string[] {
+  try {
+    const output = git("diff --name-only HEAD~1..HEAD", cwd);
+    if (!output) return [];
+    return output.split("\n").filter((f) => f.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 export function createWorktree(
   baseCwd: string,
   worktreePath: string,

@@ -1,8 +1,14 @@
+export interface SharedMemoryEntryOutput {
+  type: "file-lock" | "info";
+  content: string;
+}
+
 export interface AgentOutput {
   success: boolean;
   summary: string;
   key_changes_made: unknown;
   key_learnings: unknown;
+  shared_memory_entries?: unknown;
 }
 
 export const AGENT_OUTPUT_SCHEMA = {
@@ -13,6 +19,18 @@ export const AGENT_OUTPUT_SCHEMA = {
     summary: { type: "string" },
     key_changes_made: { type: "array", items: { type: "string" } },
     key_learnings: { type: "array", items: { type: "string" } },
+    shared_memory_entries: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          type: { type: "string", enum: ["file-lock", "info"] },
+          content: { type: "string" },
+        },
+        required: ["type", "content"],
+      },
+    },
   },
   required: ["success", "summary", "key_changes_made", "key_learnings"],
 } as const;

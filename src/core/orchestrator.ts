@@ -1,6 +1,11 @@
 import { EventEmitter } from "node:events";
-import { join } from "node:path";
-import type { Agent, AgentOutput, TokenUsage } from "./agents/types.js";
+import { dirname, join } from "node:path";
+import type {
+  Agent,
+  AgentOutput,
+  SharedMemoryEntryOutput,
+  TokenUsage,
+} from "./agents/types.js";
 import type { Config } from "./config.js";
 import type { RunInfo } from "./run.js";
 import { appendNotes, toStringArray } from "./run.js";
@@ -8,11 +13,19 @@ import { appendDebugLog, serializeError } from "./debug-log.js";
 import {
   commitAll,
   getBranchCommitCount,
+  getChangedFilesInLastCommit,
   getCurrentBranch,
   getHeadCommit,
   resetHard,
 } from "./git.js";
 import { buildIterationPrompt } from "../templates/iteration-prompt.js";
+import {
+  SharedMemory,
+  detectConflicts,
+  filterToOtherRuns,
+  formatSharedMemoryForPrompt,
+  type SharedMemorySnapshot,
+} from "./shared-memory.js";
 
 export interface IterationRecord {
   number: number;
@@ -21,6 +34,12 @@ export interface IterationRecord {
   keyChanges: string[];
   keyLearnings: string[];
   timestamp: Date;
+}
+
+export interface SiblingRunInfo {
+  runId: string;
+  objective: string;
+  lastStatus: string | null;
 }
 
 export interface OrchestratorState {
@@ -36,6 +55,7 @@ export interface OrchestratorState {
   startTime: Date;
   waitingUntil: Date | null;
   lastMessage: string | null;
+  siblingRuns: SiblingRunInfo[];
 }
 
 export interface OrchestratorEvents {
@@ -49,6 +69,51 @@ export interface OrchestratorEvents {
 export interface RunLimits {
   maxIterations?: number;
   maxTokens?: number;
+}
+
+const VALID_ENTRY_TYPES = new Set(["file-lock", "info"]);
+
+function parseSharedMemoryEntries(value: unknown): SharedMemoryEntryOutput[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is SharedMemoryEntryOutput =>
+      typeof item === "object" &&
+      item !== null &&
+      typeof item.type === "string" &&
+      VALID_ENTRY_TYPES.has(item.type) &&
+      typeof item.content === "string",
+  );
+}
+
+/**
+ * Group a list of changed file paths into concise directory-level entries.
+ * When a directory has 3+ files changed, collapses them into "dir/*".
+ * Individual files in directories with fewer changes are kept as-is.
+ * Filters out .gnhf/ paths (run metadata).
+ */
+export function groupChangedFiles(files: string[]): string[] {
+  const filtered = files.filter((f) => !f.startsWith(".gnhf/"));
+  if (filtered.length === 0) return [];
+
+  // Count files per parent directory
+  const dirCounts = new Map<string, string[]>();
+  for (const file of filtered) {
+    const dir = dirname(file);
+    const list = dirCounts.get(dir) ?? [];
+    list.push(file);
+    dirCounts.set(dir, list);
+  }
+
+  const result: string[] = [];
+  for (const [dir, dirFiles] of dirCounts) {
+    if (dirFiles.length >= 3) {
+      result.push(dir === "." ? "*" : `${dir}/*`);
+    } else {
+      result.push(...dirFiles);
+    }
+  }
+
+  return result.sort();
 }
 
 const STOP_CLOSE_AGENT_GRACE_MS = 250;
@@ -65,6 +130,8 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
   private cwd: string;
   private prompt: string;
   private limits: RunLimits;
+  private sharedMemory: SharedMemory | null = null;
+  private postedFileLocks = new Set<string>();
   private stopRequested = false;
   private stopPromise: Promise<void> | null = null;
   private activeIterationPromise: Promise<RunIterationResult> | null = null;
@@ -85,6 +152,7 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
     startTime: new Date(),
     waitingUntil: null,
     lastMessage: null,
+    siblingRuns: [],
   };
 
   constructor(
@@ -108,6 +176,13 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
       this.runInfo.baseCommit,
       this.cwd,
     );
+
+    try {
+      this.sharedMemory = new SharedMemory(this.cwd, this.runInfo.runId);
+    } catch {
+      // Shared memory is best-effort; don't block startup
+      this.sharedMemory = null;
+    }
   }
 
   getState(): OrchestratorState {
@@ -164,6 +239,16 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
     this.state.status = "running";
     this.emit("state", this.getState());
 
+    try {
+      this.sharedMemory?.register(
+        this.prompt,
+        getCurrentBranch(this.cwd),
+        this.cwd,
+      );
+    } catch {
+      // Best-effort
+    }
+
     appendDebugLog("orchestrator:start", {
       agent: this.agent.name,
       runId: this.runInfo.runId,
@@ -188,10 +273,31 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
         this.emit("iteration:start", this.state.currentIteration);
         this.emit("state", this.getState());
 
+        let sharedMemorySection = "";
+        try {
+          const fullSnapshot = this.sharedMemory?.readAll();
+          if (fullSnapshot) {
+            const otherRuns = filterToOtherRuns(
+              fullSnapshot,
+              this.runInfo.runId,
+            );
+            const conflicts = detectConflicts(fullSnapshot, this.runInfo.runId);
+            sharedMemorySection = formatSharedMemoryForPrompt(
+              otherRuns,
+              conflicts,
+            );
+            this.state.siblingRuns = this.extractSiblingRuns(otherRuns);
+            this.emit("state", this.getState());
+          }
+        } catch {
+          // Best-effort
+        }
+
         const iterationPrompt = buildIterationPrompt({
           n: this.state.currentIteration,
           runId: this.runInfo.runId,
           prompt: this.prompt,
+          sharedMemory: sharedMemorySection || undefined,
         });
 
         appendDebugLog("iteration:start", {
@@ -244,6 +350,12 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
           commitCount: this.state.commitCount,
         });
 
+        try {
+          this.sharedMemory?.heartbeat();
+        } catch {
+          // Best-effort
+        }
+
         const postIterationAbortReason = this.getPostIterationAbortReason();
         if (postIterationAbortReason) {
           this.abort(postIterationAbortReason);
@@ -292,6 +404,11 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
         await this.stopPromise;
       } else {
         await this.closeAgent();
+      }
+      try {
+        this.sharedMemory?.deregister();
+      } catch {
+        // Best-effort
       }
       this.loopDone = true;
       appendDebugLog("orchestrator:end", {
@@ -443,6 +560,39 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
     );
     this.state.successCount++;
     this.state.consecutiveFailures = 0;
+    try {
+      this.sharedMemory?.post(
+        "status",
+        `Iteration ${this.state.currentIteration} succeeded: ${output.summary}`,
+      );
+      // Auto-post file-lock entries based on actual files changed in the commit.
+      // Skip paths already posted by this run to avoid duplicate entries
+      // consuming per-run entry cap slots.
+      const changedFiles = getChangedFilesInLastCommit(this.cwd);
+      const fileLockPaths = groupChangedFiles(changedFiles);
+      for (const path of fileLockPaths) {
+        if (!this.postedFileLocks.has(path)) {
+          this.sharedMemory?.post("file-lock", path);
+          this.postedFileLocks.add(path);
+        }
+      }
+      // Post agent-driven entries (file-lock, info) — also deduplicated
+      const agentEntries = parseSharedMemoryEntries(
+        output.shared_memory_entries,
+      );
+      for (const entry of agentEntries) {
+        if (entry.type === "file-lock") {
+          if (!this.postedFileLocks.has(entry.content)) {
+            this.sharedMemory?.post(entry.type, entry.content);
+            this.postedFileLocks.add(entry.content);
+          }
+        } else {
+          this.sharedMemory?.post(entry.type, entry.content);
+        }
+      }
+    } catch {
+      // Best-effort
+    }
     return {
       number: this.state.currentIteration,
       success: true,
@@ -468,6 +618,14 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
     resetHard(this.cwd);
     this.state.failCount++;
     this.state.consecutiveFailures++;
+    try {
+      this.sharedMemory?.post(
+        "status",
+        `Iteration ${this.state.currentIteration} failed: ${recordSummary}`,
+      );
+    } catch {
+      // Best-effort
+    }
     return {
       number: this.state.currentIteration,
       success: false,
@@ -548,6 +706,20 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
       });
       // Best-effort cleanup only.
     }
+  }
+
+  private extractSiblingRuns(snapshot: SharedMemorySnapshot): SiblingRunInfo[] {
+    return Object.entries(snapshot.runs).map(([runId, run]) => {
+      // Find the most recent status entry for this run
+      const statusEntries = snapshot.entries.filter(
+        (e) => e.runId === runId && e.type === "status",
+      );
+      const lastStatus =
+        statusEntries.length > 0
+          ? statusEntries[statusEntries.length - 1].content
+          : null;
+      return { runId, objective: run.objective, lastStatus };
+    });
   }
 
   private snapshotGitState(): Record<string, unknown> {

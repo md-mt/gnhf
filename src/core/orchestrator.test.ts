@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const { mockGetChangedFiles } = vi.hoisted(() => ({
+  mockGetChangedFiles: vi.fn(() => [] as string[]),
+}));
+
 vi.mock("./git.js", () => ({
   commitAll: vi.fn(),
   getBranchCommitCount: vi.fn(() => 0),
+  getChangedFilesInLastCommit: mockGetChangedFiles,
   getCurrentBranch: vi.fn(() => "gnhf/run-abc"),
   getHeadCommit: vi.fn(() => "head123"),
   resetHard: vi.fn(),
@@ -30,9 +35,27 @@ vi.mock("../templates/iteration-prompt.js", () => ({
   buildIterationPrompt: vi.fn(() => "iteration prompt"),
 }));
 
+const { mockSharedMemoryPost } = vi.hoisted(() => ({
+  mockSharedMemoryPost: vi.fn(),
+}));
+
+vi.mock("./shared-memory.js", () => {
+  class MockSharedMemory {
+    register = vi.fn();
+    heartbeat = vi.fn();
+    post = mockSharedMemoryPost;
+    readOtherRuns = vi.fn(() => ({ runs: {}, entries: [] }));
+    deregister = vi.fn();
+  }
+  return {
+    SharedMemory: MockSharedMemory,
+    formatSharedMemoryForPrompt: vi.fn(() => ""),
+  };
+});
+
 import { commitAll } from "./git.js";
 import { appendNotes } from "./run.js";
-import { Orchestrator } from "./orchestrator.js";
+import { Orchestrator, groupChangedFiles } from "./orchestrator.js";
 import type { Agent, AgentResult } from "./agents/types.js";
 import type { Config } from "./config.js";
 import type { RunInfo } from "./run.js";
@@ -510,5 +533,491 @@ describe("Orchestrator stop limits", () => {
     expect(orchestrator.getState().iterations).toEqual([]);
     expect(orchestrator.getState().status).toBe("stopped");
     expect(close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Orchestrator shared memory posting", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("posts a status entry after a successful iteration", async () => {
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("implemented auth module")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 succeeded: implemented auth module",
+    );
+  });
+
+  it("posts a status entry after a failed iteration", async () => {
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => ({
+        output: {
+          success: false,
+          summary: "could not resolve dependency",
+          key_changes_made: [],
+          key_learnings: [],
+        },
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        },
+      })),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 failed: could not resolve dependency",
+    );
+  });
+
+  it("posts agent-driven file-lock and info entries after a successful iteration", async () => {
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => ({
+        output: {
+          success: true,
+          summary: "refactored auth module",
+          key_changes_made: ["refactored auth"],
+          key_learnings: [],
+          shared_memory_entries: [
+            { type: "file-lock", content: "Modifying src/auth/*.ts" },
+            {
+              type: "info",
+              content: "Changed AuthService interface — added logout()",
+            },
+          ],
+        },
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        },
+      })),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    // Status entry from the orchestrator itself
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 succeeded: refactored auth module",
+    );
+    // Agent-driven entries
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "Modifying src/auth/*.ts",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "info",
+      "Changed AuthService interface — added logout()",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledTimes(3);
+  });
+
+  it("ignores invalid shared_memory_entries gracefully", async () => {
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => ({
+        output: {
+          success: true,
+          summary: "done",
+          key_changes_made: ["stuff"],
+          key_learnings: [],
+          shared_memory_entries: [
+            { type: "status", content: "should be filtered — invalid type" },
+            { type: "file-lock" }, // missing content
+            "not an object",
+            { type: "file-lock", content: "valid entry" },
+          ],
+        },
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        },
+      })),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    // Status from orchestrator + only the valid file-lock entry
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 succeeded: done",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "valid entry",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not post agent entries when shared_memory_entries is absent", async () => {
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("implemented feature")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    // Only the automatic status entry
+    expect(mockSharedMemoryPost).toHaveBeenCalledTimes(1);
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 succeeded: implemented feature",
+    );
+  });
+
+  it("posts a status entry after an agent error", async () => {
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => {
+        throw new Error("network timeout");
+      }),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 failed: network timeout",
+    );
+  });
+
+  it("auto-posts file-lock entries for files changed in the commit", async () => {
+    mockGetChangedFiles.mockReturnValue([
+      "src/auth/login.ts",
+      "src/auth/logout.ts",
+      "src/config.ts",
+    ]);
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("updated auth")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 succeeded: updated auth",
+    );
+    // 2 files in src/auth/ → kept individually (< 3 threshold)
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "src/auth/login.ts",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "src/auth/logout.ts",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "src/config.ts",
+    );
+  });
+
+  it("groups 3+ files in the same directory into a wildcard file-lock", async () => {
+    mockGetChangedFiles.mockReturnValue([
+      "src/auth/login.ts",
+      "src/auth/logout.ts",
+      "src/auth/session.ts",
+      "src/config.ts",
+    ]);
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("updated auth")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    // 3 files in src/auth/ → collapsed to src/auth/*
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "src/auth/*",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "src/config.ts",
+    );
+    // status + 2 file-lock entries
+    expect(mockSharedMemoryPost).toHaveBeenCalledTimes(3);
+  });
+
+  it("filters out .gnhf/ paths from auto file-locks", async () => {
+    mockGetChangedFiles.mockReturnValue([
+      ".gnhf/runs/run-abc/notes.md",
+      "src/app.ts",
+    ]);
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("updated app")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    // Only src/app.ts file-lock, not the .gnhf path
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "src/app.ts",
+    );
+    expect(mockSharedMemoryPost).not.toHaveBeenCalledWith(
+      "file-lock",
+      expect.stringContaining(".gnhf"),
+    );
+  });
+
+  it("deduplicates auto file-lock entries across iterations", async () => {
+    // Both iterations change the same file — second should not re-post
+    mockGetChangedFiles.mockReturnValue(["src/config.ts"]);
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("updated config")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 2 },
+    );
+
+    await orchestrator.start();
+
+    // file-lock for src/config.ts should be posted exactly once despite 2 iterations
+    const fileLockCalls = mockSharedMemoryPost.mock.calls.filter(
+      (call: [string, string]) =>
+        call[0] === "file-lock" && call[1] === "src/config.ts",
+    );
+    expect(fileLockCalls).toHaveLength(1);
+
+    // But status entries should still be posted for each iteration
+    const statusCalls = mockSharedMemoryPost.mock.calls.filter(
+      (call: [string, string]) => call[0] === "status",
+    );
+    expect(statusCalls).toHaveLength(2);
+  });
+
+  it("deduplicates agent-driven file-lock entries against auto-posted ones", async () => {
+    mockGetChangedFiles.mockReturnValue(["src/auth.ts"]);
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => ({
+        output: {
+          success: true,
+          summary: "updated auth",
+          key_changes_made: ["auth.ts"],
+          key_learnings: [],
+          shared_memory_entries: [
+            { type: "file-lock", content: "src/auth.ts" }, // duplicate of auto-posted
+            { type: "file-lock", content: "src/db.ts" }, // new, should be posted
+          ],
+        },
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        },
+      })),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    // src/auth.ts should only be posted once (auto), not twice (auto + agent)
+    const authLockCalls = mockSharedMemoryPost.mock.calls.filter(
+      (call: [string, string]) =>
+        call[0] === "file-lock" && call[1] === "src/auth.ts",
+    );
+    expect(authLockCalls).toHaveLength(1);
+
+    // src/db.ts should be posted once (agent-driven, not auto)
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith("file-lock", "src/db.ts");
+  });
+
+  it("posts new file-lock entries when different files change across iterations", async () => {
+    let callCount = 0;
+    mockGetChangedFiles.mockImplementation(() => {
+      callCount++;
+      return callCount === 1 ? ["src/auth.ts"] : ["src/auth.ts", "src/db.ts"]; // auth.ts repeated, db.ts new
+    });
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("done")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 2 },
+    );
+
+    await orchestrator.start();
+
+    // auth.ts posted once (from iteration 1), db.ts posted once (from iteration 2)
+    const authCalls = mockSharedMemoryPost.mock.calls.filter(
+      (call: [string, string]) =>
+        call[0] === "file-lock" && call[1] === "src/auth.ts",
+    );
+    const dbCalls = mockSharedMemoryPost.mock.calls.filter(
+      (call: [string, string]) =>
+        call[0] === "file-lock" && call[1] === "src/db.ts",
+    );
+    expect(authCalls).toHaveLength(1);
+    expect(dbCalls).toHaveLength(1);
+  });
+});
+
+describe("groupChangedFiles", () => {
+  it("returns empty array for empty input", () => {
+    expect(groupChangedFiles([])).toEqual([]);
+  });
+
+  it("keeps individual files when directory has fewer than 3 files", () => {
+    const result = groupChangedFiles(["src/a.ts", "src/b.ts"]);
+    expect(result).toEqual(["src/a.ts", "src/b.ts"]);
+  });
+
+  it("collapses directory to wildcard when 3+ files changed", () => {
+    const result = groupChangedFiles([
+      "src/auth/login.ts",
+      "src/auth/logout.ts",
+      "src/auth/session.ts",
+    ]);
+    expect(result).toEqual(["src/auth/*"]);
+  });
+
+  it("mixes collapsed and individual paths", () => {
+    const result = groupChangedFiles([
+      "src/auth/a.ts",
+      "src/auth/b.ts",
+      "src/auth/c.ts",
+      "src/config.ts",
+      "README.md",
+    ]);
+    expect(result).toEqual(["README.md", "src/auth/*", "src/config.ts"]);
+  });
+
+  it("filters out .gnhf/ paths", () => {
+    const result = groupChangedFiles([
+      ".gnhf/runs/run-1/notes.md",
+      ".gnhf/runs/run-1/prompt.md",
+      "src/app.ts",
+    ]);
+    expect(result).toEqual(["src/app.ts"]);
+  });
+
+  it("returns * for 3+ root-level files", () => {
+    const result = groupChangedFiles(["a.ts", "b.ts", "c.ts"]);
+    expect(result).toEqual(["*"]);
   });
 });

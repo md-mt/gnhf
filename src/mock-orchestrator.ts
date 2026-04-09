@@ -147,6 +147,18 @@ export class MockOrchestrator extends EventEmitter<OrchestratorEvents> {
     startTime: new Date(Date.now() - INITIAL_ELAPSED_MS),
     waitingUntil: null,
     lastMessage: AGENT_MESSAGES[0],
+    siblingRuns: [
+      {
+        runId: "refactor-api-endpoi-cd34ef",
+        objective: "Refactor API endpoints into modules",
+        lastStatus: "Iteration 5 succeeded: split routes into modules",
+      },
+      {
+        runId: "add-auth-middleware-ab12cd",
+        objective: "Add JWT auth middleware",
+        lastStatus: "Iteration 3 succeeded: added token validation",
+      },
+    ],
   };
 
   private tokenTimer: ReturnType<typeof setTimeout> | null = null;
