@@ -99,6 +99,9 @@ File operations use atomic write patterns (write to temp file, then rename) to a
 - Automatic status posting after each iteration (success/failure summaries broadcast to sibling runs)
 - Agent-driven entry posting via structured output (`shared_memory_entries` field in agent output) — agents can post `file-lock` and `info` entries to signal file modifications and share context with sibling runs
 
-### Phase 2 (future)
+### Phase 2 (this implementation)
+- Renderer display of sibling run activity — the terminal UI shows a "sibling runs" section between the agent message and moon strip, listing up to 3 active sibling runs with their latest status. The section is optional and drops when the terminal is too short.
+- `OrchestratorState` extended with `siblingRuns: SiblingRunInfo[]` populated from the shared memory snapshot read before each iteration
+
+### Phase 3 (future)
 - CLI command to inspect shared memory state (`gnhf status`)
-- Renderer display of sibling run activity
