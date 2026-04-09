@@ -29,6 +29,12 @@ export interface IterationRecord {
   timestamp: Date;
 }
 
+export interface SiblingRunInfo {
+  runId: string;
+  objective: string;
+  lastStatus: string | null;
+}
+
 export interface OrchestratorState {
   status: "running" | "waiting" | "aborted" | "stopped";
   currentIteration: number;
@@ -42,6 +48,7 @@ export interface OrchestratorState {
   startTime: Date;
   waitingUntil: Date | null;
   lastMessage: string | null;
+  siblingRuns: SiblingRunInfo[];
 }
 
 export interface OrchestratorEvents {
@@ -106,6 +113,7 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
     startTime: new Date(),
     waitingUntil: null,
     lastMessage: null,
+    siblingRuns: [],
   };
 
   constructor(
