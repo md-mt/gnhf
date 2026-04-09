@@ -1,0 +1,103 @@
+# Shared Memory for Parallel Agent Runs
+
+## Problem
+
+When multiple gnhf runs execute concurrently (especially via `--worktree`), each agent operates in complete isolation. Agents have no awareness of what other agents are working on, leading to potential issues:
+
+- **Duplicate work**: Two agents may attempt the same refactoring or fix independently.
+- **Conflicts**: Agents may make incompatible changes to shared interfaces or APIs.
+- **Missed coordination**: An agent changing a utility function has no way to inform another agent that depends on it.
+
+## Solution
+
+Introduce a file-based shared memory system that allows concurrent gnhf runs to exchange information. Each run can post entries to a shared store and read entries posted by other runs. The shared memory is stored in `.gnhf/shared-memory/` within the repository root, using the git common directory to ensure worktrees share the same location.
+
+## Design
+
+### Storage Layout
+
+```
+.gnhf/shared-memory/
+  registry.json           # Active run registry (run metadata)
+  entries/
+    <runId>-<timestamp>.json  # Individual memory entries
+```
+
+### Run Registry
+
+Each active run registers itself with metadata:
+
+```json
+{
+  "runs": {
+    "add-a-new-feature-fo-4eb55c": {
+      "objective": "Add a new feature for ...",
+      "branch": "gnhf/add-a-new-feature-fo-4eb55c",
+      "startedAt": "2026-04-09T10:00:00Z",
+      "lastHeartbeat": "2026-04-09T10:05:00Z",
+      "cwd": "/path/to/worktree"
+    }
+  }
+}
+```
+
+Runs are considered stale if their heartbeat is older than 10 minutes. Stale runs are cleaned up on read.
+
+### Memory Entries
+
+Entries are atomic JSON files written by each run:
+
+```json
+{
+  "runId": "add-a-new-feature-fo-4eb55c",
+  "type": "status",
+  "content": "Refactoring the auth module — touching src/auth/*.ts",
+  "timestamp": "2026-04-09T10:05:00Z"
+}
+```
+
+Entry types:
+- `status` — Current activity description (what the agent is working on)
+- `file-lock` — Advisory note that certain files are being modified
+- `info` — General information for other agents
+
+### API
+
+```typescript
+class SharedMemory {
+  constructor(repoRoot: string, runId: string)
+  register(objective: string, branch: string, cwd: string): void
+  heartbeat(): void
+  post(type: EntryType, content: string): void
+  readAll(): SharedMemorySnapshot
+  deregister(): void
+}
+```
+
+### Integration Points
+
+1. **Orchestrator**: Creates a `SharedMemory` instance at startup, registers the run, sends heartbeats between iterations, and deregisters on shutdown.
+2. **Iteration prompt**: The `buildIterationPrompt` function includes a snapshot of shared memory state so agents can see what other runs are doing.
+3. **Git ignore**: Shared memory files are excluded from commits via `info/exclude`.
+
+### Concurrency Safety
+
+File operations use atomic write patterns (write to temp file, then rename) to avoid partial reads. The registry uses a simple last-writer-wins strategy with JSON merge, which is acceptable since concurrent updates to the same run are not expected. Entry files are append-only (each entry is a separate file), so no write conflicts occur.
+
+### Staleness & Cleanup
+
+- Runs that haven't sent a heartbeat in 10 minutes are considered stale and removed from the registry on the next read.
+- Entry files from deregistered or stale runs are cleaned up.
+
+## Scope
+
+### Phase 1 (this implementation)
+- Core `SharedMemory` class with registry, entries, read/write
+- Integration into `Orchestrator` (register, heartbeat, deregister)
+- Integration into `buildIterationPrompt` (include snapshot in agent prompt)
+- Git exclude for shared memory directory
+
+### Phase 2 (future)
+- CLI command to inspect shared memory state (`gnhf status`)
+- Renderer display of sibling run activity
+- Agent-driven entry posting (allow agents to write entries via structured output)
