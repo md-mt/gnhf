@@ -305,9 +305,7 @@ export function formatSharedMemoryForPrompt(
   const recentEntries = snapshot.entries.slice(-20); // Last 20 entries
 
   // Separate file-lock entries for prominent display
-  const fileLockEntries = recentEntries.filter(
-    (e) => e.type === "file-lock",
-  );
+  const fileLockEntries = recentEntries.filter((e) => e.type === "file-lock");
   const otherEntries = recentEntries.filter((e) => e.type !== "file-lock");
 
   if (fileLockEntries.length > 0) {
