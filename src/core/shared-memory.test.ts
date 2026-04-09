@@ -15,6 +15,7 @@ import {
   formatSharedMemoryForPrompt,
   formatSharedMemoryForTerminal,
   type SharedMemorySnapshot,
+  type RunRegistration,
 } from "./shared-memory.js";
 
 function createTempGitRepo(): string {
@@ -35,9 +36,12 @@ describe("SharedMemory", () => {
     rmSync(repoDir, { recursive: true, force: true });
   });
 
-  it("creates the shared memory directory on construction", () => {
+  it("creates the shared memory directories on construction", () => {
     new SharedMemory(repoDir, "run-1");
     expect(existsSync(join(repoDir, ".gnhf", "shared-memory"))).toBe(true);
+    expect(existsSync(join(repoDir, ".gnhf", "shared-memory", "runs"))).toBe(
+      true,
+    );
     expect(existsSync(join(repoDir, ".gnhf", "shared-memory", "entries"))).toBe(
       true,
     );
