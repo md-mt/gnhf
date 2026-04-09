@@ -96,6 +96,7 @@ File operations use atomic write patterns (write to temp file, then rename) to a
 - Integration into `Orchestrator` (register, heartbeat, deregister)
 - Integration into `buildIterationPrompt` (include snapshot in agent prompt)
 - Git exclude for shared memory directory
+- Automatic status posting after each iteration (success/failure summaries broadcast to sibling runs)
 
 ### Phase 2 (future)
 - CLI command to inspect shared memory state (`gnhf status`)
