@@ -177,6 +177,7 @@ describe("buildFrame", () => {
       startTime: new Date("2026-01-01T00:00:00Z"),
       waitingUntil: null,
       lastMessage: null,
+      siblingRuns: [],
     };
 
     const lines = renderer
@@ -206,6 +207,7 @@ describe("buildFrame", () => {
       startTime: new Date("2026-01-01T00:00:00Z"),
       waitingUntil: null,
       lastMessage: null,
+      siblingRuns: [],
     };
 
     const frame = buildFrame(
@@ -248,6 +250,7 @@ describe("buildFrame", () => {
       startTime: new Date("2026-01-01T00:00:00Z"),
       waitingUntil: null,
       lastMessage: null,
+      siblingRuns: [],
     };
 
     const frame = buildFrame(
@@ -330,6 +333,7 @@ describe("buildFrame", () => {
       startTime: new Date("2026-01-01T00:00:00Z"),
       waitingUntil: null,
       lastMessage: null,
+      siblingRuns: [],
     };
 
     const frame = buildFrame(
@@ -593,6 +597,7 @@ describe("Renderer ctrl+c", () => {
       startTime: new Date("2026-01-01T00:00:00Z"),
       waitingUntil: null,
       lastMessage: null,
+      siblingRuns: [],
     };
 
     let dataHandler: ((data: Buffer) => void) | null = null;
