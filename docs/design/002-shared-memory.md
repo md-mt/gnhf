@@ -150,3 +150,8 @@ Both limits are enforced lazily during `readEntries()` — expired and excess en
 - `gnhf status --json` outputs the shared memory snapshot as machine-readable JSON for scripting and programmatic consumption
 - `gnhf status --clear` removes all shared memory state (run registrations and entry files), useful for cleaning up stale state after crashes or debugging
 - Added `clearAll()` method to SharedMemory class that deletes all files in both `runs/` and `entries/` directories and returns the count of deleted files
+
+### Phase 10 (this implementation)
+- Worktree integration tests: added 4 tests that create real git worktrees and verify that SharedMemory instances from the main repo and a worktree resolve to the same shared directory, can see each other's registrations and entries, and support cross-worktree conflict detection
+- These tests validate the core contract of the shared memory system — `getRepoRoot()` uses `git rev-parse --git-common-dir` to resolve worktrees to the main repo's `.gnhf/shared-memory/` directory, ensuring worktree runs never create isolated shared memory silos
+- Tests cover: cross-worktree state sharing, readOtherRuns from worktree, deregister cleanup from worktree, and cross-worktree conflict detection
