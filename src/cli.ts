@@ -37,6 +37,7 @@ import { createAgent } from "./core/agents/factory.js";
 import { Orchestrator } from "./core/orchestrator.js";
 import {
   SharedMemory,
+  detectAllPairwiseConflicts,
   formatSharedMemoryForTerminal,
 } from "./core/shared-memory.js";
 import { MockOrchestrator } from "./mock-orchestrator.js";
@@ -569,12 +570,13 @@ program
       const snapshot = sharedMemory.readAll();
       // Remove the viewer's dummy entry from the registry
       delete snapshot.runs["__gnhf_status__"];
+      const conflicts = detectAllPairwiseConflicts(snapshot);
 
       if (opts.json) {
-        console.log(JSON.stringify(snapshot, null, 2));
+        console.log(JSON.stringify({ ...snapshot, conflicts }, null, 2));
       } else {
         console.log("");
-        console.log(formatSharedMemoryForTerminal(snapshot));
+        console.log(formatSharedMemoryForTerminal(snapshot, conflicts));
       }
     } catch (err) {
       die(err instanceof Error ? err.message : String(err));
