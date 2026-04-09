@@ -30,7 +30,9 @@ vi.mock("../templates/iteration-prompt.js", () => ({
   buildIterationPrompt: vi.fn(() => "iteration prompt"),
 }));
 
-const mockSharedMemoryPost = vi.fn();
+const { mockSharedMemoryPost } = vi.hoisted(() => ({
+  mockSharedMemoryPost: vi.fn(),
+}));
 
 vi.mock("./shared-memory.js", () => ({
   SharedMemory: vi.fn(() => ({
