@@ -21,10 +21,6 @@ export interface RunRegistration {
   cwd: string;
 }
 
-export interface Registry {
-  runs: Record<string, RunRegistration>;
-}
-
 export interface MemoryEntry {
   runId: string;
   type: EntryType;
@@ -180,30 +176,12 @@ export class SharedMemory {
   }
 
   deregister(): void {
-    const registry = this.readRegistry();
-    delete registry.runs[this.runId];
-    this.writeRegistry(registry);
-    this.cleanupEntries(this.runId);
-  }
-
-  private readRegistry(): Registry {
-    if (!existsSync(this.registryPath)) {
-      return { runs: {} };
-    }
     try {
-      const content = readFileSync(this.registryPath, "utf-8");
-      const parsed = JSON.parse(content) as Registry;
-      if (!parsed.runs || typeof parsed.runs !== "object") {
-        return { runs: {} };
-      }
-      return parsed;
+      unlinkSync(join(this.runsDir, `${this.runId}.json`));
     } catch {
-      return { runs: {} };
+      // Best-effort cleanup — file may not exist
     }
-  }
-
-  private writeRegistry(registry: Registry): void {
-    atomicWriteFile(this.registryPath, JSON.stringify(registry, null, 2));
+    this.cleanupEntries(this.runId);
   }
 
   private readEntries(activeRunIds: Set<string>): MemoryEntry[] {
