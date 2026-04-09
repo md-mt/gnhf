@@ -752,4 +752,158 @@ describe("Orchestrator shared memory posting", () => {
       "Iteration 1 failed: network timeout",
     );
   });
+
+  it("auto-posts file-lock entries for files changed in the commit", async () => {
+    mockGetChangedFiles.mockReturnValue([
+      "src/auth/login.ts",
+      "src/auth/logout.ts",
+      "src/config.ts",
+    ]);
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("updated auth")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 succeeded: updated auth",
+    );
+    // 2 files in src/auth/ → kept individually (< 3 threshold)
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "src/auth/login.ts",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "src/auth/logout.ts",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "src/config.ts",
+    );
+  });
+
+  it("groups 3+ files in the same directory into a wildcard file-lock", async () => {
+    mockGetChangedFiles.mockReturnValue([
+      "src/auth/login.ts",
+      "src/auth/logout.ts",
+      "src/auth/session.ts",
+      "src/config.ts",
+    ]);
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("updated auth")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    // 3 files in src/auth/ → collapsed to src/auth/*
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "src/auth/*",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "src/config.ts",
+    );
+    // status + 2 file-lock entries
+    expect(mockSharedMemoryPost).toHaveBeenCalledTimes(3);
+  });
+
+  it("filters out .gnhf/ paths from auto file-locks", async () => {
+    mockGetChangedFiles.mockReturnValue([
+      ".gnhf/runs/run-abc/notes.md",
+      "src/app.ts",
+    ]);
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("updated app")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    // Only src/app.ts file-lock, not the .gnhf path
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "src/app.ts",
+    );
+    expect(mockSharedMemoryPost).not.toHaveBeenCalledWith(
+      "file-lock",
+      expect.stringContaining(".gnhf"),
+    );
+  });
+});
+
+describe("groupChangedFiles", () => {
+  it("returns empty array for empty input", () => {
+    expect(groupChangedFiles([])).toEqual([]);
+  });
+
+  it("keeps individual files when directory has fewer than 3 files", () => {
+    const result = groupChangedFiles(["src/a.ts", "src/b.ts"]);
+    expect(result).toEqual(["src/a.ts", "src/b.ts"]);
+  });
+
+  it("collapses directory to wildcard when 3+ files changed", () => {
+    const result = groupChangedFiles([
+      "src/auth/login.ts",
+      "src/auth/logout.ts",
+      "src/auth/session.ts",
+    ]);
+    expect(result).toEqual(["src/auth/*"]);
+  });
+
+  it("mixes collapsed and individual paths", () => {
+    const result = groupChangedFiles([
+      "src/auth/a.ts",
+      "src/auth/b.ts",
+      "src/auth/c.ts",
+      "src/config.ts",
+      "README.md",
+    ]);
+    expect(result).toEqual(["README.md", "src/auth/*", "src/config.ts"]);
+  });
+
+  it("filters out .gnhf/ paths", () => {
+    const result = groupChangedFiles([
+      ".gnhf/runs/run-1/notes.md",
+      ".gnhf/runs/run-1/prompt.md",
+      "src/app.ts",
+    ]);
+    expect(result).toEqual(["src/app.ts"]);
+  });
+
+  it("returns * for 3+ root-level files", () => {
+    const result = groupChangedFiles(["a.ts", "b.ts", "c.ts"]);
+    expect(result).toEqual(["*"]);
+  });
 });
