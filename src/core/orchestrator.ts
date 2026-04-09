@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type {
   Agent,
   AgentOutput,
@@ -13,6 +13,7 @@ import { appendDebugLog, serializeError } from "./debug-log.js";
 import {
   commitAll,
   getBranchCommitCount,
+  getChangedFilesInLastCommit,
   getCurrentBranch,
   getHeadCommit,
   resetHard,
