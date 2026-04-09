@@ -78,38 +78,44 @@ function atomicWriteFile(filePath: string, content: string): void {
 
 export class SharedMemory {
   private readonly baseDir: string;
+  private readonly runsDir: string;
   private readonly entriesDir: string;
-  private readonly registryPath: string;
   private readonly runId: string;
 
   constructor(cwd: string, runId: string) {
     const repoRoot = getRepoRoot(cwd);
     this.baseDir = join(repoRoot, ".gnhf", SHARED_MEMORY_DIR);
+    this.runsDir = join(this.baseDir, RUNS_DIR);
     this.entriesDir = join(this.baseDir, ENTRIES_DIR);
-    this.registryPath = join(this.baseDir, REGISTRY_FILENAME);
     this.runId = runId;
+    mkdirSync(this.runsDir, { recursive: true });
     mkdirSync(this.entriesDir, { recursive: true });
   }
 
   register(objective: string, branch: string, cwd: string): void {
     const now = new Date().toISOString();
-    const registry = this.readRegistry();
-    registry.runs[this.runId] = {
+    const registration: RunRegistration = {
       objective,
       branch,
       startedAt: now,
       lastHeartbeat: now,
       cwd,
     };
-    this.writeRegistry(registry);
+    atomicWriteFile(
+      join(this.runsDir, `${this.runId}.json`),
+      JSON.stringify(registration, null, 2),
+    );
   }
 
   heartbeat(): void {
-    const registry = this.readRegistry();
-    const run = registry.runs[this.runId];
-    if (run) {
+    const runPath = join(this.runsDir, `${this.runId}.json`);
+    try {
+      const content = readFileSync(runPath, "utf-8");
+      const run = JSON.parse(content) as RunRegistration;
       run.lastHeartbeat = new Date().toISOString();
-      this.writeRegistry(registry);
+      atomicWriteFile(runPath, JSON.stringify(run, null, 2));
+    } catch {
+      // Run file missing or corrupt — skip heartbeat
     }
   }
 
@@ -125,27 +131,41 @@ export class SharedMemory {
   }
 
   readAll(): SharedMemorySnapshot {
-    const registry = this.readRegistry();
+    const runs: Record<string, RunRegistration> = {};
     const now = Date.now();
     const activeRunIds = new Set<string>();
 
-    // Prune stale runs
-    for (const [id, run] of Object.entries(registry.runs)) {
-      const lastHeartbeat = new Date(run.lastHeartbeat).getTime();
-      if (now - lastHeartbeat > STALE_THRESHOLD_MS) {
-        delete registry.runs[id];
-      } else {
-        activeRunIds.add(id);
+    if (existsSync(this.runsDir)) {
+      const files = readdirSync(this.runsDir).filter((f) =>
+        f.endsWith(".json"),
+      );
+      for (const file of files) {
+        const runId = file.replace(/\.json$/, "");
+        try {
+          const content = readFileSync(join(this.runsDir, file), "utf-8");
+          const run = JSON.parse(content) as RunRegistration;
+          const lastHeartbeat = new Date(run.lastHeartbeat).getTime();
+          if (now - lastHeartbeat > STALE_THRESHOLD_MS) {
+            // Prune stale run file
+            try {
+              unlinkSync(join(this.runsDir, file));
+            } catch {
+              // Best-effort cleanup
+            }
+          } else {
+            runs[runId] = run;
+            activeRunIds.add(runId);
+          }
+        } catch {
+          // Skip malformed run files
+        }
       }
     }
-
-    // Write back pruned registry
-    this.writeRegistry(registry);
 
     // Read entries, filtering out those from stale/deregistered runs
     const entries = this.readEntries(activeRunIds);
 
-    return { runs: registry.runs, entries };
+    return { runs, entries };
   }
 
   /**
