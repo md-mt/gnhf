@@ -7,7 +7,7 @@ import {
   readdirSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
 import {
@@ -352,6 +352,136 @@ describe("SharedMemory", () => {
     const r2Entries = snapshot.entries.filter((e) => e.runId === "run-2");
     expect(r1Entries).toHaveLength(10); // capped
     expect(r2Entries).toHaveLength(3); // under cap, unchanged
+  });
+});
+
+describe("SharedMemory worktree integration", () => {
+  let mainRepoDir: string;
+  let worktreeDir: string;
+
+  beforeEach(() => {
+    mainRepoDir = createTempGitRepo();
+    // Create a branch for the worktree
+    execSync("git branch worktree-branch", {
+      cwd: mainRepoDir,
+      stdio: "pipe",
+    });
+    // Create a worktree
+    worktreeDir = mkdtempSync(join(tmpdir(), "gnhf-worktree-test-"));
+    // Remove the temp dir since git worktree add needs a non-existent path
+    rmSync(worktreeDir, { recursive: true, force: true });
+    execSync(`git worktree add "${worktreeDir}" worktree-branch`, {
+      cwd: mainRepoDir,
+      stdio: "pipe",
+    });
+  });
+
+  afterEach(() => {
+    // Remove worktree first, then main repo
+    try {
+      execSync(`git worktree remove "${worktreeDir}" --force`, {
+        cwd: mainRepoDir,
+        stdio: "pipe",
+      });
+    } catch {
+      // Best-effort cleanup
+    }
+    rmSync(worktreeDir, { recursive: true, force: true });
+    rmSync(mainRepoDir, { recursive: true, force: true });
+  });
+
+  it("shares state between main repo and worktree", () => {
+    // Create SharedMemory from the main repo
+    const smMain = new SharedMemory(mainRepoDir, "main-run");
+    smMain.register("Build feature X", "gnhf/main-run", mainRepoDir);
+    smMain.post("status", "Working on X from main");
+
+    // Create SharedMemory from the worktree — should resolve to the same directory
+    const smWorktree = new SharedMemory(worktreeDir, "worktree-run");
+    smWorktree.register("Fix bug Y", "gnhf/worktree-run", worktreeDir);
+    smWorktree.post("status", "Working on Y from worktree");
+
+    // Both runs should see each other
+    const mainSnapshot = smMain.readAll();
+    expect(Object.keys(mainSnapshot.runs).sort()).toEqual([
+      "main-run",
+      "worktree-run",
+    ]);
+    expect(mainSnapshot.entries).toHaveLength(2);
+
+    const worktreeSnapshot = smWorktree.readAll();
+    expect(Object.keys(worktreeSnapshot.runs).sort()).toEqual([
+      "main-run",
+      "worktree-run",
+    ]);
+    expect(worktreeSnapshot.entries).toHaveLength(2);
+
+    // Verify they use the same physical directory (in the main repo's .gnhf/)
+    const sharedMemoryDir = join(mainRepoDir, ".gnhf", "shared-memory");
+    expect(existsSync(join(sharedMemoryDir, "runs", "main-run.json"))).toBe(
+      true,
+    );
+    expect(
+      existsSync(join(sharedMemoryDir, "runs", "worktree-run.json")),
+    ).toBe(true);
+
+    // Worktree's .gnhf directory should NOT exist — shared memory is in main repo
+    expect(existsSync(join(worktreeDir, ".gnhf", "shared-memory"))).toBe(
+      false,
+    );
+  });
+
+  it("readOtherRuns from worktree sees main repo runs", () => {
+    const smMain = new SharedMemory(mainRepoDir, "main-run");
+    smMain.register("Build feature X", "gnhf/main-run", mainRepoDir);
+    smMain.post("file-lock", "src/auth.ts");
+
+    const smWorktree = new SharedMemory(worktreeDir, "worktree-run");
+    smWorktree.register("Fix bug Y", "gnhf/worktree-run", worktreeDir);
+
+    const otherRuns = smWorktree.readOtherRuns();
+    expect(Object.keys(otherRuns.runs)).toEqual(["main-run"]);
+    expect(otherRuns.entries).toHaveLength(1);
+    expect(otherRuns.entries[0]!.type).toBe("file-lock");
+    expect(otherRuns.entries[0]!.content).toBe("src/auth.ts");
+  });
+
+  it("deregister from worktree cleans up in shared directory", () => {
+    const smMain = new SharedMemory(mainRepoDir, "main-run");
+    smMain.register("Build feature X", "gnhf/main-run", mainRepoDir);
+
+    const smWorktree = new SharedMemory(worktreeDir, "worktree-run");
+    smWorktree.register("Fix bug Y", "gnhf/worktree-run", worktreeDir);
+    smWorktree.post("status", "Working on Y");
+
+    // Deregister the worktree run
+    smWorktree.deregister();
+
+    // Main repo should only see itself
+    const snapshot = smMain.readAll();
+    expect(Object.keys(snapshot.runs)).toEqual(["main-run"]);
+    // Worktree entries should be cleaned up
+    expect(snapshot.entries.every((e) => e.runId === "main-run")).toBe(true);
+  });
+
+  it("conflict detection works across worktrees", () => {
+    const smMain = new SharedMemory(mainRepoDir, "main-run");
+    smMain.register("Build feature X", "gnhf/main-run", mainRepoDir);
+    smMain.post("file-lock", "src/config.ts");
+
+    const smWorktree = new SharedMemory(worktreeDir, "worktree-run");
+    smWorktree.register("Fix bug Y", "gnhf/worktree-run", worktreeDir);
+    smWorktree.post("file-lock", "src/config.ts");
+
+    // Detect conflicts from the worktree's perspective
+    const fullSnapshot = smWorktree.readAll();
+    const conflicts = detectConflicts(fullSnapshot, "worktree-run");
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]).toEqual({
+      file: "src/config.ts",
+      otherRunId: "main-run",
+      otherFile: "src/config.ts",
+    });
   });
 });
 
