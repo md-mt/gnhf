@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
@@ -144,7 +150,7 @@ describe("SharedMemory", () => {
     registry.runs["run-1"].lastHeartbeat = new Date(
       Date.now() - 15 * 60 * 1000,
     ).toISOString();
-    require("node:fs").writeFileSync(
+    writeFileSync(
       registryPath,
       JSON.stringify(registry),
       "utf-8",
@@ -169,7 +175,7 @@ describe("SharedMemory", () => {
       "shared-memory",
       "registry.json",
     );
-    require("node:fs").writeFileSync(registryPath, "not valid json", "utf-8");
+    writeFileSync(registryPath, "not valid json", "utf-8");
 
     const snapshot = sm.readAll();
     expect(snapshot.runs).toEqual({});
