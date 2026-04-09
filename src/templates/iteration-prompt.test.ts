@@ -40,4 +40,24 @@ describe("buildIterationPrompt", () => {
     expect(result).toContain("Read .gnhf/runs/");
     expect(result).toContain("smallest logical unit");
   });
+
+  it("includes shared memory section when provided", () => {
+    const result = buildIterationPrompt({
+      n: 1,
+      runId: "run-1",
+      prompt: "test",
+      sharedMemory: "## Parallel Runs\n\nOther agents are active.",
+    });
+    expect(result).toContain("## Parallel Runs");
+    expect(result).toContain("Other agents are active.");
+  });
+
+  it("omits shared memory section when not provided", () => {
+    const result = buildIterationPrompt({
+      n: 1,
+      runId: "run-1",
+      prompt: "test",
+    });
+    expect(result).not.toContain("Parallel Runs");
+  });
 });
