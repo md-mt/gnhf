@@ -13,6 +13,10 @@ import {
   resetHard,
 } from "./git.js";
 import { buildIterationPrompt } from "../templates/iteration-prompt.js";
+import {
+  SharedMemory,
+  formatSharedMemoryForPrompt,
+} from "./shared-memory.js";
 
 export interface IterationRecord {
   number: number;
@@ -65,6 +69,7 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
   private cwd: string;
   private prompt: string;
   private limits: RunLimits;
+  private sharedMemory: SharedMemory | null = null;
   private stopRequested = false;
   private stopPromise: Promise<void> | null = null;
   private activeIterationPromise: Promise<RunIterationResult> | null = null;
