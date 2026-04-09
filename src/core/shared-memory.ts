@@ -191,7 +191,12 @@ export class SharedMemory {
       return [];
     }
 
-    const entries: MemoryEntry[] = [];
+    const now = Date.now();
+    const entriesByRun = new Map<
+      string,
+      { entry: MemoryEntry; file: string }[]
+    >();
+    const filesToDelete: string[] = [];
     const files = readdirSync(this.entriesDir).filter((f) =>
       f.endsWith(".json"),
     );
@@ -200,18 +205,45 @@ export class SharedMemory {
       try {
         const content = readFileSync(join(this.entriesDir, file), "utf-8");
         const entry = JSON.parse(content) as MemoryEntry;
-        if (activeRunIds.has(entry.runId)) {
-          entries.push(entry);
+        if (!activeRunIds.has(entry.runId)) {
+          filesToDelete.push(file);
+        } else if (now - new Date(entry.timestamp).getTime() > ENTRY_MAX_AGE_MS) {
+          filesToDelete.push(file);
         } else {
-          // Clean up entry from inactive run
-          try {
-            unlinkSync(join(this.entriesDir, file));
-          } catch {
-            // Best-effort cleanup
-          }
+          const list = entriesByRun.get(entry.runId) ?? [];
+          list.push({ entry, file });
+          entriesByRun.set(entry.runId, list);
         }
       } catch {
         // Skip malformed entries
+      }
+    }
+
+    // Enforce per-run entry cap: keep only the most recent entries
+    const entries: MemoryEntry[] = [];
+    for (const [, items] of entriesByRun) {
+      items.sort(
+        (a, b) =>
+          new Date(a.entry.timestamp).getTime() -
+          new Date(b.entry.timestamp).getTime(),
+      );
+      if (items.length > MAX_ENTRIES_PER_RUN) {
+        const excess = items.splice(0, items.length - MAX_ENTRIES_PER_RUN);
+        for (const item of excess) {
+          filesToDelete.push(item.file);
+        }
+      }
+      for (const item of items) {
+        entries.push(item.entry);
+      }
+    }
+
+    // Best-effort cleanup of expired / excess files
+    for (const file of filesToDelete) {
+      try {
+        unlinkSync(join(this.entriesDir, file));
+      } catch {
+        // Best-effort cleanup
       }
     }
 
