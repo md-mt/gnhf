@@ -430,9 +430,13 @@ describe("formatSharedMemoryForTerminal", () => {
 
     const result = formatSharedMemoryForTerminal(snapshot);
     expect(result).toContain("Recent Entries (3)");
-    expect(result).toContain("[STATUS] (run-1) Iteration 3 succeeded: built auth");
+    expect(result).toContain(
+      "[STATUS] (run-1) Iteration 3 succeeded: built auth",
+    );
     expect(result).toContain("[FILE-LOCK] (run-2) Modifying src/db/*.ts");
-    expect(result).toContain("[INFO] (run-1) Auth module depends on new config format");
+    expect(result).toContain(
+      "[INFO] (run-1) Auth module depends on new config format",
+    );
     expect(result).toContain("2m ago");
     expect(result).toContain("30s ago");
     expect(result).toContain("10s ago");

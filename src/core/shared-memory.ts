@@ -207,7 +207,10 @@ export class SharedMemory {
         const entry = JSON.parse(content) as MemoryEntry;
         if (!activeRunIds.has(entry.runId)) {
           filesToDelete.push(file);
-        } else if (now - new Date(entry.timestamp).getTime() > ENTRY_MAX_AGE_MS) {
+        } else if (
+          now - new Date(entry.timestamp).getTime() >
+          ENTRY_MAX_AGE_MS
+        ) {
           filesToDelete.push(file);
         } else {
           const list = entriesByRun.get(entry.runId) ?? [];
