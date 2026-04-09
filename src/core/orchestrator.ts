@@ -113,6 +113,13 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
       this.runInfo.baseCommit,
       this.cwd,
     );
+
+    try {
+      this.sharedMemory = new SharedMemory(this.cwd, this.runInfo.runId);
+    } catch {
+      // Shared memory is best-effort; don't block startup
+      this.sharedMemory = null;
+    }
   }
 
   getState(): OrchestratorState {
@@ -169,6 +176,16 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
     this.state.status = "running";
     this.emit("state", this.getState());
 
+    try {
+      this.sharedMemory?.register(
+        this.prompt,
+        getCurrentBranch(this.cwd),
+        this.cwd,
+      );
+    } catch {
+      // Best-effort
+    }
+
     appendDebugLog("orchestrator:start", {
       agent: this.agent.name,
       runId: this.runInfo.runId,
@@ -193,10 +210,21 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
         this.emit("iteration:start", this.state.currentIteration);
         this.emit("state", this.getState());
 
+        let sharedMemorySection = "";
+        try {
+          const snapshot = this.sharedMemory?.readOtherRuns();
+          if (snapshot) {
+            sharedMemorySection = formatSharedMemoryForPrompt(snapshot);
+          }
+        } catch {
+          // Best-effort
+        }
+
         const iterationPrompt = buildIterationPrompt({
           n: this.state.currentIteration,
           runId: this.runInfo.runId,
           prompt: this.prompt,
+          sharedMemory: sharedMemorySection || undefined,
         });
 
         appendDebugLog("iteration:start", {
