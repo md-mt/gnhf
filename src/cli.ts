@@ -547,15 +547,35 @@ program
 program
   .command("status")
   .description("Show active parallel runs and their shared memory entries")
-  .action(() => {
+  .option("--json", "Output as JSON for programmatic consumption")
+  .option("--clear", "Remove all shared memory state (runs and entries)")
+  .action((opts: { json?: boolean; clear?: boolean }) => {
     try {
       const cwd = process.cwd();
       const sharedMemory = new SharedMemory(cwd, "__gnhf_status__");
+
+      if (opts.clear) {
+        const deleted = sharedMemory.clearAll();
+        if (opts.json) {
+          console.log(JSON.stringify({ cleared: deleted }));
+        } else {
+          console.log(
+            `  Cleared ${deleted} shared memory file${deleted === 1 ? "" : "s"}.`,
+          );
+        }
+        return;
+      }
+
       const snapshot = sharedMemory.readAll();
       // Remove the viewer's dummy entry from the registry
       delete snapshot.runs["__gnhf_status__"];
-      console.log("");
-      console.log(formatSharedMemoryForTerminal(snapshot));
+
+      if (opts.json) {
+        console.log(JSON.stringify(snapshot, null, 2));
+      } else {
+        console.log("");
+        console.log(formatSharedMemoryForTerminal(snapshot));
+      }
     } catch (err) {
       die(err instanceof Error ? err.message : String(err));
     }

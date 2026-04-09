@@ -283,6 +283,36 @@ describe("SharedMemory", () => {
     expect(remaining).toHaveLength(10);
   });
 
+  it("clearAll removes all run and entry files", () => {
+    const sm1 = new SharedMemory(repoDir, "run-1");
+    const sm2 = new SharedMemory(repoDir, "run-2");
+
+    sm1.register("Build feature X", "gnhf/run-1", "/path/1");
+    sm2.register("Fix bug Y", "gnhf/run-2", "/path/2");
+    sm1.post("status", "Working on X");
+    sm2.post("file-lock", "src/auth.ts");
+    sm2.post("info", "FYI");
+
+    // Before clearing, there should be runs and entries
+    const before = sm1.readAll();
+    expect(Object.keys(before.runs)).toHaveLength(2);
+    expect(before.entries).toHaveLength(3);
+
+    const deleted = sm1.clearAll();
+    expect(deleted).toBe(5); // 2 run files + 3 entry files
+
+    // After clearing, everything should be empty
+    const after = sm1.readAll();
+    expect(Object.keys(after.runs)).toHaveLength(0);
+    expect(after.entries).toHaveLength(0);
+  });
+
+  it("clearAll returns 0 when no files exist", () => {
+    const sm = new SharedMemory(repoDir, "run-1");
+    const deleted = sm.clearAll();
+    expect(deleted).toBe(0);
+  });
+
   it("applies per-run cap independently across runs", () => {
     const sm1 = new SharedMemory(repoDir, "run-1");
     const sm2 = new SharedMemory(repoDir, "run-2");
