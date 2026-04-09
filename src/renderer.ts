@@ -148,6 +148,53 @@ export function renderMoonStripCells(
   return rows;
 }
 
+const MAX_SIBLING_RUNS = 3;
+const SIBLING_LABEL_WIDTH = CONTENT_WIDTH;
+
+function truncate(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen - 1) + "\u2026";
+}
+
+export function renderSiblingRunsCells(
+  siblingRuns: SiblingRunInfo[],
+): Cell[][] {
+  if (siblingRuns.length === 0) return [];
+
+  const rows: Cell[][] = [];
+  rows.push(textToCells("\u2500\u2500 sibling runs \u2500\u2500", "dim"));
+
+  const displayed = siblingRuns.slice(0, MAX_SIBLING_RUNS);
+  for (const run of displayed) {
+    // Show run ID (shortened) and a brief status
+    const shortId = truncate(run.runId, 24);
+    if (run.lastStatus) {
+      // Strip "Iteration N succeeded/failed: " prefix if present
+      const statusText = run.lastStatus.replace(
+        /^Iteration \d+ (?:succeeded|failed): /,
+        "",
+      );
+      const line = `\u25cb ${shortId}: ${truncate(statusText, SIBLING_LABEL_WIDTH - shortId.length - 4)}`;
+      rows.push(textToCells(truncate(line, SIBLING_LABEL_WIDTH), "dim"));
+    } else {
+      rows.push(
+        textToCells(truncate(`\u25cb ${shortId}: starting...`, SIBLING_LABEL_WIDTH), "dim"),
+      );
+    }
+  }
+
+  if (siblingRuns.length > MAX_SIBLING_RUNS) {
+    rows.push(
+      textToCells(
+        `  +${siblingRuns.length - MAX_SIBLING_RUNS} more`,
+        "dim",
+      ),
+    );
+  }
+
+  return rows;
+}
+
 // ── String wrappers (preserve existing API) ──────────────────
 
 export function renderTitle(agentName?: string): string[] {
