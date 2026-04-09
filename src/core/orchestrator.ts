@@ -1,6 +1,11 @@
 import { EventEmitter } from "node:events";
 import { join } from "node:path";
-import type { Agent, AgentOutput, TokenUsage } from "./agents/types.js";
+import type {
+  Agent,
+  AgentOutput,
+  SharedMemoryEntryOutput,
+  TokenUsage,
+} from "./agents/types.js";
 import type { Config } from "./config.js";
 import type { RunInfo } from "./run.js";
 import { appendNotes, toStringArray } from "./run.js";
@@ -50,6 +55,22 @@ export interface OrchestratorEvents {
 export interface RunLimits {
   maxIterations?: number;
   maxTokens?: number;
+}
+
+const VALID_ENTRY_TYPES = new Set(["file-lock", "info"]);
+
+function parseSharedMemoryEntries(
+  value: unknown,
+): SharedMemoryEntryOutput[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (item): item is SharedMemoryEntryOutput =>
+      typeof item === "object" &&
+      item !== null &&
+      typeof item.type === "string" &&
+      VALID_ENTRY_TYPES.has(item.type) &&
+      typeof item.content === "string",
+  );
 }
 
 const STOP_CLOSE_AGENT_GRACE_MS = 250;
