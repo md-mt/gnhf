@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const { mockGetChangedFiles } = vi.hoisted(() => ({
+  mockGetChangedFiles: vi.fn(() => [] as string[]),
+}));
+
 vi.mock("./git.js", () => ({
   commitAll: vi.fn(),
   getBranchCommitCount: vi.fn(() => 0),
+  getChangedFilesInLastCommit: mockGetChangedFiles,
   getCurrentBranch: vi.fn(() => "gnhf/run-abc"),
   getHeadCommit: vi.fn(() => "head123"),
   resetHard: vi.fn(),
@@ -50,7 +55,7 @@ vi.mock("./shared-memory.js", () => {
 
 import { commitAll } from "./git.js";
 import { appendNotes } from "./run.js";
-import { Orchestrator } from "./orchestrator.js";
+import { Orchestrator, groupChangedFiles } from "./orchestrator.js";
 import type { Agent, AgentResult } from "./agents/types.js";
 import type { Config } from "./config.js";
 import type { RunInfo } from "./run.js";
