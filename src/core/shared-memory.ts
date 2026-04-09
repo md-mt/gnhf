@@ -41,7 +41,7 @@ const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
 const ENTRY_MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
 const MAX_ENTRIES_PER_RUN = 10;
 const SHARED_MEMORY_DIR = "shared-memory";
-const REGISTRY_FILENAME = "registry.json";
+const RUNS_DIR = "runs";
 const ENTRIES_DIR = "entries";
 
 function getGitCommonDir(cwd: string): string {
