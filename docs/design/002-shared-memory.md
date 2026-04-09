@@ -112,5 +112,6 @@ Both limits are enforced lazily during `readEntries()` — expired and excess en
 - Renderer display of sibling run activity — the terminal UI shows a "sibling runs" section between the agent message and moon strip, listing up to 3 active sibling runs with their latest status. The section is optional and drops when the terminal is too short.
 - `OrchestratorState` extended with `siblingRuns: SiblingRunInfo[]` populated from the shared memory snapshot read before each iteration
 
-### Phase 3 (future)
-- CLI command to inspect shared memory state (`gnhf status`)
+### Phase 3 (this implementation)
+- CLI subcommand `gnhf status` to inspect shared memory state — shows active runs (objective, branch, started/heartbeat times) and recent entries (type, run, content, time ago) in a terminal-friendly format
+- `formatSharedMemoryForTerminal()` function for human-readable terminal output with relative timestamps
