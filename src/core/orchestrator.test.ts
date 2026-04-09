@@ -861,6 +861,125 @@ describe("Orchestrator shared memory posting", () => {
       expect.stringContaining(".gnhf"),
     );
   });
+
+  it("deduplicates auto file-lock entries across iterations", async () => {
+    // Both iterations change the same file — second should not re-post
+    mockGetChangedFiles.mockReturnValue(["src/config.ts"]);
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("updated config")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 2 },
+    );
+
+    await orchestrator.start();
+
+    // file-lock for src/config.ts should be posted exactly once despite 2 iterations
+    const fileLockCalls = mockSharedMemoryPost.mock.calls.filter(
+      (call: [string, string]) =>
+        call[0] === "file-lock" && call[1] === "src/config.ts",
+    );
+    expect(fileLockCalls).toHaveLength(1);
+
+    // But status entries should still be posted for each iteration
+    const statusCalls = mockSharedMemoryPost.mock.calls.filter(
+      (call: [string, string]) => call[0] === "status",
+    );
+    expect(statusCalls).toHaveLength(2);
+  });
+
+  it("deduplicates agent-driven file-lock entries against auto-posted ones", async () => {
+    mockGetChangedFiles.mockReturnValue(["src/auth.ts"]);
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => ({
+        output: {
+          success: true,
+          summary: "updated auth",
+          key_changes_made: ["auth.ts"],
+          key_learnings: [],
+          shared_memory_entries: [
+            { type: "file-lock", content: "src/auth.ts" }, // duplicate of auto-posted
+            { type: "file-lock", content: "src/db.ts" }, // new, should be posted
+          ],
+        },
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        },
+      })),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    // src/auth.ts should only be posted once (auto), not twice (auto + agent)
+    const authLockCalls = mockSharedMemoryPost.mock.calls.filter(
+      (call: [string, string]) =>
+        call[0] === "file-lock" && call[1] === "src/auth.ts",
+    );
+    expect(authLockCalls).toHaveLength(1);
+
+    // src/db.ts should be posted once (agent-driven, not auto)
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "src/db.ts",
+    );
+  });
+
+  it("posts new file-lock entries when different files change across iterations", async () => {
+    let callCount = 0;
+    mockGetChangedFiles.mockImplementation(() => {
+      callCount++;
+      return callCount === 1
+        ? ["src/auth.ts"]
+        : ["src/auth.ts", "src/db.ts"]; // auth.ts repeated, db.ts new
+    });
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("done")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 2 },
+    );
+
+    await orchestrator.start();
+
+    // auth.ts posted once (from iteration 1), db.ts posted once (from iteration 2)
+    const authCalls = mockSharedMemoryPost.mock.calls.filter(
+      (call: [string, string]) =>
+        call[0] === "file-lock" && call[1] === "src/auth.ts",
+    );
+    const dbCalls = mockSharedMemoryPost.mock.calls.filter(
+      (call: [string, string]) =>
+        call[0] === "file-lock" && call[1] === "src/db.ts",
+    );
+    expect(authCalls).toHaveLength(1);
+    expect(dbCalls).toHaveLength(1);
+  });
 });
 
 describe("groupChangedFiles", () => {
