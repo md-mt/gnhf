@@ -92,10 +92,7 @@ interface WorktreeRunResult {
   effectiveCwd: string;
 }
 
-function initializeWorktreeRun(
-  prompt: string,
-  cwd: string,
-): WorktreeRunResult {
+function initializeWorktreeRun(prompt: string, cwd: string): WorktreeRunResult {
   const repoRoot = getRepoRootDir(cwd);
   const baseCommit = getHeadCommit(cwd);
   const branchName = slugifyPrompt(prompt);

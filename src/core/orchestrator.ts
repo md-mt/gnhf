@@ -13,10 +13,7 @@ import {
   resetHard,
 } from "./git.js";
 import { buildIterationPrompt } from "../templates/iteration-prompt.js";
-import {
-  SharedMemory,
-  formatSharedMemoryForPrompt,
-} from "./shared-memory.js";
+import { SharedMemory, formatSharedMemoryForPrompt } from "./shared-memory.js";
 
 export interface IterationRecord {
   number: number;

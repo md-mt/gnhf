@@ -30,9 +30,9 @@ describe("SharedMemory", () => {
   it("creates the shared memory directory on construction", () => {
     new SharedMemory(repoDir, "run-1");
     expect(existsSync(join(repoDir, ".gnhf", "shared-memory"))).toBe(true);
-    expect(
-      existsSync(join(repoDir, ".gnhf", "shared-memory", "entries")),
-    ).toBe(true);
+    expect(existsSync(join(repoDir, ".gnhf", "shared-memory", "entries"))).toBe(
+      true,
+    );
   });
 
   it("registers a run and reads it back", () => {
