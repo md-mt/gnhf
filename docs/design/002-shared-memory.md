@@ -145,3 +145,8 @@ Both limits are enforced lazily during `readEntries()` — expired and excess en
 - Prevents duplicate file-lock entries from consuming per-run entry cap slots (10 max) when the same files are modified across multiple iterations
 - Deduplication applies to both auto-posted file-lock entries (from git diff) and agent-driven file-lock entries (from `shared_memory_entries` output), and cross-deduplicates between the two sources
 - New file-lock paths (files changed for the first time in a later iteration) are still posted normally
+
+### Phase 9 (this implementation)
+- `gnhf status --json` outputs the shared memory snapshot as machine-readable JSON for scripting and programmatic consumption
+- `gnhf status --clear` removes all shared memory state (run registrations and entry files), useful for cleaning up stale state after crashes or debugging
+- Added `clearAll()` method to SharedMemory class that deletes all files in both `runs/` and `entries/` directories and returns the count of deleted files
