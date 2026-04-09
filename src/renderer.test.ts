@@ -296,6 +296,7 @@ describe("buildFrame", () => {
       startTime: new Date("2026-01-01T00:00:00Z"),
       waitingUntil: null,
       lastMessage: longMessage,
+      siblingRuns: [],
     };
 
     const cells = buildFrameCells(
