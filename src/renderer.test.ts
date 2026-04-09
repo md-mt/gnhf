@@ -8,6 +8,7 @@ import {
   renderStats,
   renderAgentMessage,
   renderMoonStrip,
+  renderSiblingRunsCells,
   renderStarFieldLines,
   buildFrame,
   buildFrameCells,
@@ -18,6 +19,7 @@ import type {
   IterationRecord,
   Orchestrator,
   OrchestratorState,
+  SiblingRunInfo,
 } from "./core/orchestrator.js";
 
 function createIteration(
