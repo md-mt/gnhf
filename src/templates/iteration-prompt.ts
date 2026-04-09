@@ -25,6 +25,7 @@ This is iteration ${params.n}. Each iteration aims to make an incremental step f
 - summary: a concise one-sentence summary of the accomplishment in this iteration
 - key_changes_made: an array of descriptions for key changes you made. don't group this by file - group by logical units of work. don't describe activities - describe material outcomes
 - key_learnings: an array of new learnings that were surprising, weren't captured by previous notes and would be informative for future iterations
+- shared_memory_entries: (optional) an array of messages to broadcast to other parallel runs working in this repository. Each entry has a "type" ("file-lock" or "info") and "content" string. Use "file-lock" to signal which files/directories you are modifying so other runs can avoid conflicts. Use "info" to share relevant context (e.g., API changes, new interfaces). Only include entries when you are making changes that other runs should know about.
 ${sharedMemoryBlock}
 ## Objective
 

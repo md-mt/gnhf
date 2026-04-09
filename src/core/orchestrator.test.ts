@@ -596,6 +596,130 @@ describe("Orchestrator shared memory posting", () => {
     );
   });
 
+  it("posts agent-driven file-lock and info entries after a successful iteration", async () => {
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => ({
+        output: {
+          success: true,
+          summary: "refactored auth module",
+          key_changes_made: ["refactored auth"],
+          key_learnings: [],
+          shared_memory_entries: [
+            { type: "file-lock", content: "Modifying src/auth/*.ts" },
+            { type: "info", content: "Changed AuthService interface — added logout()" },
+          ],
+        },
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        },
+      })),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    // Status entry from the orchestrator itself
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 succeeded: refactored auth module",
+    );
+    // Agent-driven entries
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "Modifying src/auth/*.ts",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "info",
+      "Changed AuthService interface — added logout()",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledTimes(3);
+  });
+
+  it("ignores invalid shared_memory_entries gracefully", async () => {
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => ({
+        output: {
+          success: true,
+          summary: "done",
+          key_changes_made: ["stuff"],
+          key_learnings: [],
+          shared_memory_entries: [
+            { type: "status", content: "should be filtered — invalid type" },
+            { type: "file-lock" }, // missing content
+            "not an object",
+            { type: "file-lock", content: "valid entry" },
+          ],
+        },
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        },
+      })),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    // Status from orchestrator + only the valid file-lock entry
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 succeeded: done",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "file-lock",
+      "valid entry",
+    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not post agent entries when shared_memory_entries is absent", async () => {
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("implemented feature")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    // Only the automatic status entry
+    expect(mockSharedMemoryPost).toHaveBeenCalledTimes(1);
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 succeeded: implemented feature",
+    );
+  });
+
   it("posts a status entry after an agent error", async () => {
     const agent: Agent = {
       name: "claude",

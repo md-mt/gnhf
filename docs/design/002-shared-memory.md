@@ -97,8 +97,8 @@ File operations use atomic write patterns (write to temp file, then rename) to a
 - Integration into `buildIterationPrompt` (include snapshot in agent prompt)
 - Git exclude for shared memory directory
 - Automatic status posting after each iteration (success/failure summaries broadcast to sibling runs)
+- Agent-driven entry posting via structured output (`shared_memory_entries` field in agent output) — agents can post `file-lock` and `info` entries to signal file modifications and share context with sibling runs
 
 ### Phase 2 (future)
 - CLI command to inspect shared memory state (`gnhf status`)
 - Renderer display of sibling run activity
-- Agent-driven entry posting (allow agents to write entries via structured output)

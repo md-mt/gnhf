@@ -510,6 +510,13 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
         "status",
         `Iteration ${this.state.currentIteration} succeeded: ${output.summary}`,
       );
+      // Post agent-driven entries (file-lock, info)
+      const agentEntries = parseSharedMemoryEntries(
+        output.shared_memory_entries,
+      );
+      for (const entry of agentEntries) {
+        this.sharedMemory?.post(entry.type, entry.content);
+      }
     } catch {
       // Best-effort
     }
