@@ -377,6 +377,26 @@ export function formatSharedMemoryForPrompt(
     }
   }
 
+  // Show conflict warnings first — these are the most urgent
+  if (conflicts && conflicts.length > 0) {
+    lines.push(
+      "### CONFLICT DETECTED",
+      "",
+      "**CRITICAL: The following files have been modified by BOTH this run AND other parallel runs. Merge conflicts are likely. Avoid further changes to these files unless you are resolving the conflict.**",
+      "",
+    );
+    for (const conflict of conflicts) {
+      if (conflict.file === conflict.otherFile) {
+        lines.push(`- \`${conflict.file}\` — also modified by ${conflict.otherRunId}`);
+      } else {
+        lines.push(
+          `- \`${conflict.file}\` overlaps with \`${conflict.otherFile}\` from ${conflict.otherRunId}`,
+        );
+      }
+    }
+    lines.push("");
+  }
+
   const recentEntries = snapshot.entries.slice(-20); // Last 20 entries
 
   // Separate file-lock entries for prominent display

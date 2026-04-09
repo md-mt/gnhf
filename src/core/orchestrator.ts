@@ -21,6 +21,8 @@ import {
 import { buildIterationPrompt } from "../templates/iteration-prompt.js";
 import {
   SharedMemory,
+  detectConflicts,
+  filterToOtherRuns,
   formatSharedMemoryForPrompt,
   type SharedMemorySnapshot,
 } from "./shared-memory.js";
