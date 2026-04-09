@@ -368,6 +368,7 @@ describe("buildFrame", () => {
       startTime: new Date("2026-01-01T00:00:00Z"),
       waitingUntil: null,
       lastMessage: "reading files",
+      siblingRuns: [],
     };
 
     const availableHeight = 22;
