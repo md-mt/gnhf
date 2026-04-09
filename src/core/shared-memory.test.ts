@@ -150,11 +150,7 @@ describe("SharedMemory", () => {
     registry.runs["run-1"].lastHeartbeat = new Date(
       Date.now() - 15 * 60 * 1000,
     ).toISOString();
-    writeFileSync(
-      registryPath,
-      JSON.stringify(registry),
-      "utf-8",
-    );
+    writeFileSync(registryPath, JSON.stringify(registry), "utf-8");
 
     const snapshot = sm2.readAll();
     expect(Object.keys(snapshot.runs)).toEqual(["run-2"]);
