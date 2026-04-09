@@ -938,19 +938,14 @@ describe("Orchestrator shared memory posting", () => {
     expect(authLockCalls).toHaveLength(1);
 
     // src/db.ts should be posted once (agent-driven, not auto)
-    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
-      "file-lock",
-      "src/db.ts",
-    );
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith("file-lock", "src/db.ts");
   });
 
   it("posts new file-lock entries when different files change across iterations", async () => {
     let callCount = 0;
     mockGetChangedFiles.mockImplementation(() => {
       callCount++;
-      return callCount === 1
-        ? ["src/auth.ts"]
-        : ["src/auth.ts", "src/db.ts"]; // auth.ts repeated, db.ts new
+      return callCount === 1 ? ["src/auth.ts"] : ["src/auth.ts", "src/db.ts"]; // auth.ts repeated, db.ts new
     });
     const agent: Agent = {
       name: "claude",
