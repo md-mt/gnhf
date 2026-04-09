@@ -316,3 +316,63 @@ export function formatSharedMemoryForPrompt(
 
   return lines.join("\n");
 }
+
+function formatTimeAgo(isoTimestamp: string): string {
+  const diffMs = Date.now() - new Date(isoTimestamp).getTime();
+  if (diffMs < 0) return "just now";
+  const seconds = Math.floor(diffMs / 1000);
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+/**
+ * Format a shared memory snapshot as a human-readable string
+ * for display in the terminal (gnhf status command).
+ */
+export function formatSharedMemoryForTerminal(
+  snapshot: SharedMemorySnapshot,
+): string {
+  const runEntries = Object.entries(snapshot.runs);
+  if (runEntries.length === 0 && snapshot.entries.length === 0) {
+    return "  No active runs.\n";
+  }
+
+  const lines: string[] = [];
+
+  if (runEntries.length > 0) {
+    lines.push(`  Active Runs (${runEntries.length})`, "");
+    for (const [id, run] of runEntries) {
+      lines.push(`    ${id}`);
+      lines.push(`      Objective: ${run.objective}`);
+      lines.push(`      Branch:    ${run.branch}`);
+      lines.push(`      Started:   ${formatTimeAgo(run.startedAt)}`);
+      lines.push(`      Heartbeat: ${formatTimeAgo(run.lastHeartbeat)}`);
+      lines.push("");
+    }
+  }
+
+  const recentEntries = snapshot.entries.slice(-20);
+  if (recentEntries.length > 0) {
+    lines.push(`  Recent Entries (${recentEntries.length})`, "");
+    for (const entry of recentEntries) {
+      const typeLabel =
+        entry.type === "file-lock"
+          ? "FILE-LOCK"
+          : entry.type === "status"
+            ? "STATUS"
+            : "INFO";
+      const ago = formatTimeAgo(entry.timestamp);
+      lines.push(
+        `    [${typeLabel}] (${entry.runId}) ${entry.content}  (${ago})`,
+      );
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
