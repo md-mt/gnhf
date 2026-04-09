@@ -285,6 +285,8 @@ export class SharedMemory {
  */
 export function pathsOverlap(a: string, b: string): boolean {
   if (a === b) return true;
+  // Bare "*" matches everything (root-level wildcard from groupChangedFiles)
+  if (a === "*" || b === "*") return true;
   // "dir/*" matches "dir/foo.ts"
   if (a.endsWith("/*") && b.startsWith(a.slice(0, -1))) return true;
   if (b.endsWith("/*") && a.startsWith(b.slice(0, -1))) return true;
