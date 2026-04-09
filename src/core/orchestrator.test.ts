@@ -44,12 +44,14 @@ vi.mock("./shared-memory.js", () => ({
 import { commitAll } from "./git.js";
 import { appendNotes } from "./run.js";
 import { Orchestrator } from "./orchestrator.js";
+import { SharedMemory } from "./shared-memory.js";
 import type { Agent, AgentResult } from "./agents/types.js";
 import type { Config } from "./config.js";
 import type { RunInfo } from "./run.js";
 
 const mockCommitAll = vi.mocked(commitAll);
 const mockAppendNotes = vi.mocked(appendNotes);
+const MockSharedMemory = vi.mocked(SharedMemory);
 
 const config: Config = {
   agent: "claude",
@@ -521,5 +523,105 @@ describe("Orchestrator stop limits", () => {
     expect(orchestrator.getState().iterations).toEqual([]);
     expect(orchestrator.getState().status).toBe("stopped");
     expect(close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Orchestrator shared memory posting", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("posts a status entry after a successful iteration", async () => {
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => createSuccessResult("implemented auth module")),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    const mockInstance = MockSharedMemory.mock.results[0]!.value as {
+      post: ReturnType<typeof vi.fn>;
+    };
+    expect(mockInstance.post).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 succeeded: implemented auth module",
+    );
+  });
+
+  it("posts a status entry after a failed iteration", async () => {
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => ({
+        output: {
+          success: false,
+          summary: "could not resolve dependency",
+          key_changes_made: [],
+          key_learnings: [],
+        },
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+        },
+      })),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    const mockInstance = MockSharedMemory.mock.results[0]!.value as {
+      post: ReturnType<typeof vi.fn>;
+    };
+    expect(mockInstance.post).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 failed: could not resolve dependency",
+    );
+  });
+
+  it("posts a status entry after an agent error", async () => {
+    const agent: Agent = {
+      name: "claude",
+      run: vi.fn(async () => {
+        throw new Error("network timeout");
+      }),
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      agent,
+      runInfo,
+      "ship it",
+      "/repo",
+      0,
+      { maxIterations: 1 },
+    );
+
+    await orchestrator.start();
+
+    const mockInstance = MockSharedMemory.mock.results[0]!.value as {
+      post: ReturnType<typeof vi.fn>;
+    };
+    expect(mockInstance.post).toHaveBeenCalledWith(
+      "status",
+      "Iteration 1 failed: network timeout",
+    );
   });
 });
