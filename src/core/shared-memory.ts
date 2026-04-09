@@ -358,7 +358,11 @@ export function formatSharedMemoryForPrompt(
 ): string {
   const runEntries = Object.entries(snapshot.runs);
   const hasConflicts = conflicts && conflicts.length > 0;
-  if (runEntries.length === 0 && snapshot.entries.length === 0 && !hasConflicts) {
+  if (
+    runEntries.length === 0 &&
+    snapshot.entries.length === 0 &&
+    !hasConflicts
+  ) {
     return "";
   }
 
@@ -390,7 +394,9 @@ export function formatSharedMemoryForPrompt(
     );
     for (const conflict of conflicts) {
       if (conflict.file === conflict.otherFile) {
-        lines.push(`- \`${conflict.file}\` — also modified by ${conflict.otherRunId}`);
+        lines.push(
+          `- \`${conflict.file}\` — also modified by ${conflict.otherRunId}`,
+        );
       } else {
         lines.push(
           `- \`${conflict.file}\` overlaps with \`${conflict.otherFile}\` from ${conflict.otherRunId}`,

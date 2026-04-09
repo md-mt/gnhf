@@ -280,10 +280,7 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
               fullSnapshot,
               this.runInfo.runId,
             );
-            const conflicts = detectConflicts(
-              fullSnapshot,
-              this.runInfo.runId,
-            );
+            const conflicts = detectConflicts(fullSnapshot, this.runInfo.runId);
             sharedMemorySection = formatSharedMemoryForPrompt(
               otherRuns,
               conflicts,
