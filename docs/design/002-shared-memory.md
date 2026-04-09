@@ -155,3 +155,10 @@ Both limits are enforced lazily during `readEntries()` — expired and excess en
 - Worktree integration tests: added 4 tests that create real git worktrees and verify that SharedMemory instances from the main repo and a worktree resolve to the same shared directory, can see each other's registrations and entries, and support cross-worktree conflict detection
 - These tests validate the core contract of the shared memory system — `getRepoRoot()` uses `git rev-parse --git-common-dir` to resolve worktrees to the main repo's `.gnhf/shared-memory/` directory, ensuring worktree runs never create isolated shared memory silos
 - Tests cover: cross-worktree state sharing, readOtherRuns from worktree, deregister cleanup from worktree, and cross-worktree conflict detection
+
+### Phase 11 (this implementation)
+- `gnhf status` now detects and displays pairwise conflicts between all active runs — users can see at a glance which runs are modifying overlapping files
+- Added `detectAllPairwiseConflicts()` function that finds file-lock overlaps between all pairs of runs (not just one run vs others), with deduplication so each conflict pair is reported once
+- `formatSharedMemoryForTerminal()` now accepts optional conflicts and renders a "Conflicts (N)" section between active runs and recent entries
+- `gnhf status --json` output now includes a `conflicts` array alongside runs and entries
+- Terminal conflict display uses `← conflict between runs` for exact matches and `↔` with run attribution for wildcard overlaps
