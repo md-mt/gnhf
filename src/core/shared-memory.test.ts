@@ -421,14 +421,12 @@ describe("SharedMemory worktree integration", () => {
     expect(existsSync(join(sharedMemoryDir, "runs", "main-run.json"))).toBe(
       true,
     );
-    expect(
-      existsSync(join(sharedMemoryDir, "runs", "worktree-run.json")),
-    ).toBe(true);
+    expect(existsSync(join(sharedMemoryDir, "runs", "worktree-run.json"))).toBe(
+      true,
+    );
 
     // Worktree's .gnhf directory should NOT exist — shared memory is in main repo
-    expect(existsSync(join(worktreeDir, ".gnhf", "shared-memory"))).toBe(
-      false,
-    );
+    expect(existsSync(join(worktreeDir, ".gnhf", "shared-memory"))).toBe(false);
   });
 
   it("readOtherRuns from worktree sees main repo runs", () => {
