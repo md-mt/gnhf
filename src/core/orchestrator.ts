@@ -274,10 +274,21 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
 
         let sharedMemorySection = "";
         try {
-          const snapshot = this.sharedMemory?.readOtherRuns();
-          if (snapshot) {
-            sharedMemorySection = formatSharedMemoryForPrompt(snapshot);
-            this.state.siblingRuns = this.extractSiblingRuns(snapshot);
+          const fullSnapshot = this.sharedMemory?.readAll();
+          if (fullSnapshot) {
+            const otherRuns = filterToOtherRuns(
+              fullSnapshot,
+              this.runInfo.runId,
+            );
+            const conflicts = detectConflicts(
+              fullSnapshot,
+              this.runInfo.runId,
+            );
+            sharedMemorySection = formatSharedMemoryForPrompt(
+              otherRuns,
+              conflicts,
+            );
+            this.state.siblingRuns = this.extractSiblingRuns(otherRuns);
             this.emit("state", this.getState());
           }
         } catch {

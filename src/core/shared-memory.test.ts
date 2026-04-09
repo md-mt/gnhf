@@ -12,8 +12,11 @@ import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
 import {
   SharedMemory,
+  detectConflicts,
+  filterToOtherRuns,
   formatSharedMemoryForPrompt,
   formatSharedMemoryForTerminal,
+  pathsOverlap,
   type SharedMemorySnapshot,
   type RunRegistration,
 } from "./shared-memory.js";
