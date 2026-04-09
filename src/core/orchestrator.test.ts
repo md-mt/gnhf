@@ -549,10 +549,7 @@ describe("Orchestrator shared memory posting", () => {
 
     await orchestrator.start();
 
-    const mockInstance = MockSharedMemory.mock.results[0]!.value as {
-      post: ReturnType<typeof vi.fn>;
-    };
-    expect(mockInstance.post).toHaveBeenCalledWith(
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
       "status",
       "Iteration 1 succeeded: implemented auth module",
     );
@@ -588,10 +585,7 @@ describe("Orchestrator shared memory posting", () => {
 
     await orchestrator.start();
 
-    const mockInstance = MockSharedMemory.mock.results[0]!.value as {
-      post: ReturnType<typeof vi.fn>;
-    };
-    expect(mockInstance.post).toHaveBeenCalledWith(
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
       "status",
       "Iteration 1 failed: could not resolve dependency",
     );
@@ -616,10 +610,7 @@ describe("Orchestrator shared memory posting", () => {
 
     await orchestrator.start();
 
-    const mockInstance = MockSharedMemory.mock.results[0]!.value as {
-      post: ReturnType<typeof vi.fn>;
-    };
-    expect(mockInstance.post).toHaveBeenCalledWith(
+    expect(mockSharedMemoryPost).toHaveBeenCalledWith(
       "status",
       "Iteration 1 failed: network timeout",
     );
