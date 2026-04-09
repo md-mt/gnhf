@@ -30,11 +30,13 @@ vi.mock("../templates/iteration-prompt.js", () => ({
   buildIterationPrompt: vi.fn(() => "iteration prompt"),
 }));
 
+const mockSharedMemoryPost = vi.fn();
+
 vi.mock("./shared-memory.js", () => ({
   SharedMemory: vi.fn(() => ({
     register: vi.fn(),
     heartbeat: vi.fn(),
-    post: vi.fn(),
+    post: mockSharedMemoryPost,
     readOtherRuns: vi.fn(() => ({ runs: {}, entries: [] })),
     deregister: vi.fn(),
   })),
@@ -44,14 +46,12 @@ vi.mock("./shared-memory.js", () => ({
 import { commitAll } from "./git.js";
 import { appendNotes } from "./run.js";
 import { Orchestrator } from "./orchestrator.js";
-import { SharedMemory } from "./shared-memory.js";
 import type { Agent, AgentResult } from "./agents/types.js";
 import type { Config } from "./config.js";
 import type { RunInfo } from "./run.js";
 
 const mockCommitAll = vi.mocked(commitAll);
 const mockAppendNotes = vi.mocked(appendNotes);
-const MockSharedMemory = vi.mocked(SharedMemory);
 
 const config: Config = {
   agent: "claude",
