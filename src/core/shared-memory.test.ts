@@ -178,6 +178,110 @@ describe("SharedMemory", () => {
     const snapshot = sm.readAll();
     expect(snapshot.runs).toEqual({});
   });
+
+  it("evicts entries older than 30 minutes", () => {
+    const sm = new SharedMemory(repoDir, "run-1");
+    sm.register("Build feature X", "gnhf/run-1", repoDir);
+
+    // Write an entry file with a timestamp 35 minutes ago
+    const entriesDir = join(repoDir, ".gnhf", "shared-memory", "entries");
+    const oldEntry = {
+      runId: "run-1",
+      type: "status",
+      content: "Old work",
+      timestamp: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+    };
+    writeFileSync(
+      join(entriesDir, "run-1-old-0000.json"),
+      JSON.stringify(oldEntry),
+    );
+
+    // Write a recent entry
+    sm.post("status", "Current work");
+
+    const snapshot = sm.readAll();
+    expect(snapshot.entries).toHaveLength(1);
+    expect(snapshot.entries[0]!.content).toBe("Current work");
+
+    // Old entry file should be cleaned up
+    const remaining = readdirSync(entriesDir).filter((f) =>
+      f.endsWith(".json"),
+    );
+    expect(remaining).toHaveLength(1);
+  });
+
+  it("caps entries at 10 per run, keeping most recent", () => {
+    const sm = new SharedMemory(repoDir, "run-1");
+    sm.register("Build feature X", "gnhf/run-1", repoDir);
+
+    // Write 15 entries with sequential timestamps
+    const entriesDir = join(repoDir, ".gnhf", "shared-memory", "entries");
+    for (let i = 0; i < 15; i++) {
+      const entry = {
+        runId: "run-1",
+        type: "status",
+        content: `Entry ${i}`,
+        timestamp: new Date(Date.now() - (15 - i) * 1000).toISOString(),
+      };
+      writeFileSync(
+        join(entriesDir, `run-1-${1000 + i}-abcd.json`),
+        JSON.stringify(entry),
+      );
+    }
+
+    const snapshot = sm.readAll();
+    expect(snapshot.entries).toHaveLength(10);
+    // Should have entries 5-14 (the 10 most recent)
+    expect(snapshot.entries[0]!.content).toBe("Entry 5");
+    expect(snapshot.entries[9]!.content).toBe("Entry 14");
+
+    // Excess files should be cleaned up
+    const remaining = readdirSync(entriesDir).filter((f) =>
+      f.endsWith(".json"),
+    );
+    expect(remaining).toHaveLength(10);
+  });
+
+  it("applies per-run cap independently across runs", () => {
+    const sm1 = new SharedMemory(repoDir, "run-1");
+    const sm2 = new SharedMemory(repoDir, "run-2");
+    sm1.register("Build feature X", "gnhf/run-1", "/path/1");
+    sm2.register("Fix bug Y", "gnhf/run-2", "/path/2");
+
+    const entriesDir = join(repoDir, ".gnhf", "shared-memory", "entries");
+
+    // Write 12 entries for run-1 and 3 for run-2
+    for (let i = 0; i < 12; i++) {
+      const entry = {
+        runId: "run-1",
+        type: "status",
+        content: `R1 Entry ${i}`,
+        timestamp: new Date(Date.now() - (12 - i) * 1000).toISOString(),
+      };
+      writeFileSync(
+        join(entriesDir, `run-1-${1000 + i}-aaaa.json`),
+        JSON.stringify(entry),
+      );
+    }
+    for (let i = 0; i < 3; i++) {
+      const entry = {
+        runId: "run-2",
+        type: "status",
+        content: `R2 Entry ${i}`,
+        timestamp: new Date(Date.now() - (3 - i) * 1000).toISOString(),
+      };
+      writeFileSync(
+        join(entriesDir, `run-2-${2000 + i}-bbbb.json`),
+        JSON.stringify(entry),
+      );
+    }
+
+    const snapshot = sm1.readAll();
+    const r1Entries = snapshot.entries.filter((e) => e.runId === "run-1");
+    const r2Entries = snapshot.entries.filter((e) => e.runId === "run-2");
+    expect(r1Entries).toHaveLength(10); // capped
+    expect(r2Entries).toHaveLength(3); // under cap, unchanged
+  });
 });
 
 describe("formatSharedMemoryForPrompt", () => {
