@@ -146,20 +146,50 @@ describe("SharedMemory", () => {
     sm2.register("Fix bug Y", "gnhf/run-2", "/path/2");
 
     // Manually set run-1's heartbeat to 15 minutes ago
-    const registryPath = join(
+    const runPath = join(
       repoDir,
       ".gnhf",
       "shared-memory",
-      "registry.json",
+      "runs",
+      "run-1.json",
     );
-    const registry = JSON.parse(readFileSync(registryPath, "utf-8"));
-    registry.runs["run-1"].lastHeartbeat = new Date(
-      Date.now() - 15 * 60 * 1000,
-    ).toISOString();
-    writeFileSync(registryPath, JSON.stringify(registry), "utf-8");
+    const run = JSON.parse(readFileSync(runPath, "utf-8")) as RunRegistration;
+    run.lastHeartbeat = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    writeFileSync(runPath, JSON.stringify(run), "utf-8");
 
     const snapshot = sm2.readAll();
     expect(Object.keys(snapshot.runs)).toEqual(["run-2"]);
+    // Stale run file should be cleaned up
+    expect(existsSync(runPath)).toBe(false);
+  });
+
+  it("concurrent registrations never overwrite each other (per-run files)", () => {
+    // This test verifies the key property of per-run files: each run writes
+    // only its own file, so simultaneous registrations can't cause lost updates.
+    const sm1 = new SharedMemory(repoDir, "run-1");
+    const sm2 = new SharedMemory(repoDir, "run-2");
+    const sm3 = new SharedMemory(repoDir, "run-3");
+
+    // Register all three — order doesn't matter since they write separate files
+    sm2.register("Task B", "gnhf/run-2", "/path/2");
+    sm1.register("Task A", "gnhf/run-1", "/path/1");
+    sm3.register("Task C", "gnhf/run-3", "/path/3");
+
+    // All three must be visible
+    const snapshot = sm1.readAll();
+    expect(Object.keys(snapshot.runs).sort()).toEqual([
+      "run-1",
+      "run-2",
+      "run-3",
+    ]);
+    expect(snapshot.runs["run-1"]!.objective).toBe("Task A");
+    expect(snapshot.runs["run-2"]!.objective).toBe("Task B");
+    expect(snapshot.runs["run-3"]!.objective).toBe("Task C");
+
+    // Verify separate files exist
+    const runsDir = join(repoDir, ".gnhf", "shared-memory", "runs");
+    const files = readdirSync(runsDir).sort();
+    expect(files).toEqual(["run-1.json", "run-2.json", "run-3.json"]);
   });
 
   it("handles missing registry file gracefully", () => {
@@ -169,18 +199,22 @@ describe("SharedMemory", () => {
     expect(snapshot.entries).toEqual([]);
   });
 
-  it("handles corrupted registry file gracefully", () => {
+  it("handles corrupted run file gracefully", () => {
     const sm = new SharedMemory(repoDir, "run-1");
-    const registryPath = join(
+    // Write a valid run, then corrupt another run file
+    sm.register("Build feature X", "gnhf/run-1", repoDir);
+    const corruptPath = join(
       repoDir,
       ".gnhf",
       "shared-memory",
-      "registry.json",
+      "runs",
+      "run-corrupt.json",
     );
-    writeFileSync(registryPath, "not valid json", "utf-8");
+    writeFileSync(corruptPath, "not valid json", "utf-8");
 
     const snapshot = sm.readAll();
-    expect(snapshot.runs).toEqual({});
+    // Valid run should still appear; corrupted one is skipped
+    expect(Object.keys(snapshot.runs)).toEqual(["run-1"]);
   });
 
   it("evicts entries older than 30 minutes", () => {
