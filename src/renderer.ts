@@ -368,6 +368,7 @@ export function buildContentCells(
     promptRows.push(pl ? textToCells(pl, "dim") : []);
   }
 
+  const siblingRows = renderSiblingRunsCells(state.siblingRuns);
   const sections = {
     top: [[]] as Cell[][],
     eyebrow: [titleCells[0], [], []] as Cell[][],
@@ -386,6 +387,8 @@ export function buildContentCells(
       [],
       ...renderAgentMessageCells(state.lastMessage, state.status),
     ],
+    siblings:
+      siblingRows.length > 0 ? ([[], ...siblingRows] as Cell[][]) : [],
     moon: [[], [], ...moonRows] as Cell[][],
   };
 
@@ -396,12 +399,14 @@ export function buildContentCells(
     ...sections.prompt,
     ...sections.stats,
     ...sections.agent,
+    ...sections.siblings,
     ...sections.moon,
   ];
 
   const optionalSections: Array<keyof typeof sections> = [
     "art",
     "eyebrow",
+    "siblings",
     "agent",
     "prompt",
   ];
@@ -425,6 +430,7 @@ export function buildContentCells(
       ...sections.prompt,
       ...sections.stats,
       ...sections.agent,
+      ...sections.siblings,
     ].filter((row) => row.length > 0);
     const allowedMoonRows = Math.max(0, maxRows - nonMoonRows.length);
     const visibleMoonRows =
