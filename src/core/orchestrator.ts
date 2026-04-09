@@ -565,18 +565,30 @@ export class Orchestrator extends EventEmitter<OrchestratorEvents> {
         "status",
         `Iteration ${this.state.currentIteration} succeeded: ${output.summary}`,
       );
-      // Auto-post file-lock entries based on actual files changed in the commit
+      // Auto-post file-lock entries based on actual files changed in the commit.
+      // Skip paths already posted by this run to avoid duplicate entries
+      // consuming per-run entry cap slots.
       const changedFiles = getChangedFilesInLastCommit(this.cwd);
       const fileLockPaths = groupChangedFiles(changedFiles);
       for (const path of fileLockPaths) {
-        this.sharedMemory?.post("file-lock", path);
+        if (!this.postedFileLocks.has(path)) {
+          this.sharedMemory?.post("file-lock", path);
+          this.postedFileLocks.add(path);
+        }
       }
-      // Post agent-driven entries (file-lock, info)
+      // Post agent-driven entries (file-lock, info) — also deduplicated
       const agentEntries = parseSharedMemoryEntries(
         output.shared_memory_entries,
       );
       for (const entry of agentEntries) {
-        this.sharedMemory?.post(entry.type, entry.content);
+        if (entry.type === "file-lock") {
+          if (!this.postedFileLocks.has(entry.content)) {
+            this.sharedMemory?.post(entry.type, entry.content);
+            this.postedFileLocks.add(entry.content);
+          }
+        } else {
+          this.sharedMemory?.post(entry.type, entry.content);
+        }
       }
     } catch {
       // Best-effort
