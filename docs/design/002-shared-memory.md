@@ -119,3 +119,9 @@ Both limits are enforced lazily during `readEntries()` — expired and excess en
 - File-lock entries are separated into a dedicated "Files Being Modified by Other Runs" section in the agent prompt, with an explicit avoidance warning telling the agent not to modify those files unless absolutely necessary
 - Status and info entries remain in the general "Recent Activity from Other Runs" section
 - This makes file-lock entries actionable rather than purely informational — agents can make conflict-avoidance decisions based on the prominent warning
+
+### Phase 5 (this implementation)
+- Replaced single `registry.json` with per-run files in `runs/` directory to eliminate race conditions
+- Each run writes only its own `runs/<runId>.json` file, so concurrent registrations and heartbeats never cause lost updates
+- The `Registry` interface was removed — reading the registry now scans all files in the `runs/` directory
+- Stale run pruning deletes individual run files rather than modifying a shared registry
