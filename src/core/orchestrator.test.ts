@@ -30,6 +30,16 @@ vi.mock("../templates/iteration-prompt.js", () => ({
   buildIterationPrompt: vi.fn(() => "iteration prompt"),
 }));
 
+vi.mock("./shared-memory.js", () => ({
+  SharedMemory: vi.fn(() => ({
+    register: vi.fn(),
+    heartbeat: vi.fn(),
+    readOtherRuns: vi.fn(() => ({ runs: {}, entries: [] })),
+    deregister: vi.fn(),
+  })),
+  formatSharedMemoryForPrompt: vi.fn(() => ""),
+}));
+
 import { commitAll } from "./git.js";
 import { appendNotes } from "./run.js";
 import { Orchestrator } from "./orchestrator.js";
