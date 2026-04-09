@@ -357,7 +357,8 @@ export function formatSharedMemoryForPrompt(
   conflicts?: ConflictInfo[],
 ): string {
   const runEntries = Object.entries(snapshot.runs);
-  if (runEntries.length === 0 && snapshot.entries.length === 0) {
+  const hasConflicts = conflicts && conflicts.length > 0;
+  if (runEntries.length === 0 && snapshot.entries.length === 0 && !hasConflicts) {
     return "";
   }
 
