@@ -311,7 +311,7 @@ describe("formatSharedMemoryForPrompt", () => {
     expect(result).toContain("gnhf/run-2");
   });
 
-  it("formats entries with type labels", () => {
+  it("separates file-lock entries into a dedicated section with avoidance warning", () => {
     const snapshot: SharedMemorySnapshot = {
       runs: {
         "run-2": {
@@ -332,15 +332,81 @@ describe("formatSharedMemoryForPrompt", () => {
         {
           runId: "run-2",
           type: "file-lock",
-          content: "Modifying src/auth/*.ts",
+          content: "src/auth/*.ts",
           timestamp: "2026-04-09T10:06:00Z",
         },
       ],
     };
 
     const result = formatSharedMemoryForPrompt(snapshot);
+    // File-lock entries appear in their own section with a warning
+    expect(result).toContain("Files Being Modified by Other Runs");
+    expect(result).toContain("Do NOT modify these files");
+    expect(result).toContain("`src/auth/*.ts` (by run-2)");
+    // Status entries appear in the general activity section
     expect(result).toContain("[STATUS] (run-2): Working on auth");
-    expect(result).toContain("[FILE-LOCK] (run-2): Modifying src/auth/*.ts");
+    // File-lock entries should NOT appear in the activity section
+    expect(result).not.toContain("[FILE-LOCK]");
+  });
+
+  it("shows only activity section when there are no file-lock entries", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {
+        "run-2": {
+          objective: "Fix bug Y",
+          branch: "gnhf/run-2",
+          startedAt: "2026-04-09T10:00:00Z",
+          lastHeartbeat: "2026-04-09T10:05:00Z",
+          cwd: "/path/2",
+        },
+      },
+      entries: [
+        {
+          runId: "run-2",
+          type: "status",
+          content: "Working on auth",
+          timestamp: "2026-04-09T10:05:00Z",
+        },
+        {
+          runId: "run-2",
+          type: "info",
+          content: "Added new API endpoint",
+          timestamp: "2026-04-09T10:06:00Z",
+        },
+      ],
+    };
+
+    const result = formatSharedMemoryForPrompt(snapshot);
+    expect(result).not.toContain("Files Being Modified");
+    expect(result).toContain("[STATUS] (run-2): Working on auth");
+    expect(result).toContain("[INFO] (run-2): Added new API endpoint");
+  });
+
+  it("shows only file-lock section when there are no other entries", () => {
+    const snapshot: SharedMemorySnapshot = {
+      runs: {
+        "run-2": {
+          objective: "Fix bug Y",
+          branch: "gnhf/run-2",
+          startedAt: "2026-04-09T10:00:00Z",
+          lastHeartbeat: "2026-04-09T10:05:00Z",
+          cwd: "/path/2",
+        },
+      },
+      entries: [
+        {
+          runId: "run-2",
+          type: "file-lock",
+          content: "src/auth/*.ts",
+          timestamp: "2026-04-09T10:06:00Z",
+        },
+      ],
+    };
+
+    const result = formatSharedMemoryForPrompt(snapshot);
+    expect(result).toContain("Files Being Modified by Other Runs");
+    expect(result).toContain("`src/auth/*.ts` (by run-2)");
+    expect(result).not.toContain("Recent Activity from Other Runs");
   });
 
   it("limits entries to last 20", () => {

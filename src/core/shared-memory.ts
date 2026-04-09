@@ -303,15 +303,30 @@ export function formatSharedMemoryForPrompt(
   }
 
   const recentEntries = snapshot.entries.slice(-20); // Last 20 entries
-  if (recentEntries.length > 0) {
+
+  // Separate file-lock entries for prominent display
+  const fileLockEntries = recentEntries.filter(
+    (e) => e.type === "file-lock",
+  );
+  const otherEntries = recentEntries.filter((e) => e.type !== "file-lock");
+
+  if (fileLockEntries.length > 0) {
+    lines.push(
+      "### Files Being Modified by Other Runs",
+      "",
+      "**WARNING: The following files/directories are actively being modified by other parallel runs. Do NOT modify these files unless absolutely necessary to avoid merge conflicts.**",
+      "",
+    );
+    for (const entry of fileLockEntries) {
+      lines.push(`- \`${entry.content}\` (by ${entry.runId})`);
+    }
+    lines.push("");
+  }
+
+  if (otherEntries.length > 0) {
     lines.push("### Recent Activity from Other Runs", "");
-    for (const entry of recentEntries) {
-      const typeLabel =
-        entry.type === "file-lock"
-          ? "[FILE-LOCK]"
-          : entry.type === "status"
-            ? "[STATUS]"
-            : "[INFO]";
+    for (const entry of otherEntries) {
+      const typeLabel = entry.type === "status" ? "[STATUS]" : "[INFO]";
       lines.push(`- ${typeLabel} (${entry.runId}): ${entry.content}`);
     }
     lines.push("");
