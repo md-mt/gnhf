@@ -607,7 +607,10 @@ describe("Orchestrator shared memory posting", () => {
           key_learnings: [],
           shared_memory_entries: [
             { type: "file-lock", content: "Modifying src/auth/*.ts" },
-            { type: "info", content: "Changed AuthService interface — added logout()" },
+            {
+              type: "info",
+              content: "Changed AuthService interface — added logout()",
+            },
           ],
         },
         usage: {

@@ -59,9 +59,7 @@ export interface RunLimits {
 
 const VALID_ENTRY_TYPES = new Set(["file-lock", "info"]);
 
-function parseSharedMemoryEntries(
-  value: unknown,
-): SharedMemoryEntryOutput[] {
+function parseSharedMemoryEntries(value: unknown): SharedMemoryEntryOutput[] {
   if (!Array.isArray(value)) return [];
   return value.filter(
     (item): item is SharedMemoryEntryOutput =>
